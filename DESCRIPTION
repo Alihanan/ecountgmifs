@@ -1,0 +1,39 @@
+Package: ecountgmifs
+Title: Extended Stagewise Regression for High-Dimensional Count Data
+Version: 0.0.0.9000
+Authors@R: c(
+    person(
+        given = "Alikhan",
+        family = "Anuarbekov",
+        role = c("aut", "cre"),
+        email = "anuarali@fel.cvut.cz"
+    ),
+    person(
+        given = "Jiří",
+        family = "Kléma",
+        role = "aut",
+        email = "klema@fel.cvut.cz"
+    )
+    )
+Description: Implements an extended generalized monotone incremental
+    forward stagewise framework for high-dimensional count regression.
+    The package provides tools for fitting regularized count models with
+    optional prior or structural information.
+License: GPL (>= 3)
+Encoding: UTF-8
+Roxygen: list(markdown = TRUE)
+Suggests: 
+    knitr,
+    rmarkdown,
+    testthat (>= 3.0.0)
+Config/testthat/edition: 3
+VignetteBuilder: knitr
+Imports: 
+    nloptr,
+    Rcpp,
+    stats
+LinkingTo: 
+    nloptr,
+    Rcpp,
+    RcppArmadillo
+Config/roxygen2/version: 8.0.0

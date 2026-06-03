@@ -1,0 +1,55 @@
+#pragma once
+
+#include <RcppArmadillo.h>
+
+enum EnumStateTrackStrategy
+{
+  ACTIVE_SET_CHANGE = 0,
+  ALL_ITERATION = 1,
+  EVERY_K_ITERATION = 2,
+  NO_STATE_TRACKING = 3
+};
+
+enum EnumLinkFunc
+{
+  LOG_LINK = 0,
+  SOFTPLUS_LINK = 1
+};
+
+enum EnumFamily
+{
+  NEGATIVE_BINOMIAL = 0,
+  POISSON = 1
+};
+
+inline EnumStateTrackStrategy as_track_strategy(int x)
+{
+  switch (x) {
+  case 0: return ACTIVE_SET_CHANGE;
+  case 1: return ALL_ITERATION;
+  case 2: return EVERY_K_ITERATION;
+  case 3: return NO_STATE_TRACKING;
+  default:
+    Rcpp::stop("invalid coefficient save strategy");
+  }
+}
+
+inline EnumLinkFunc as_link_func(uint32_t x)
+{
+  switch (x) {
+  case 0: return LOG_LINK;
+  case 1: return SOFTPLUS_LINK;
+  default:
+    Rcpp::stop("invalid link function");
+  }
+}
+
+inline EnumFamily as_family(uint32_t x)
+{
+  switch (x) {
+  case 0: return NEGATIVE_BINOMIAL;
+  case 1: return POISSON;
+  default:
+    Rcpp::stop("invalid family");
+  }
+}
