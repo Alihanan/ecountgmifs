@@ -13,8 +13,6 @@ Install the package from GitHub:
 remotes::install_github("Alihanan/ecountgmifs")
 ```
 
-Replace `YOUR_USERNAME` with your GitHub username.
-
 ## Basic usage
 
 ```r
@@ -87,7 +85,7 @@ fit <- ecountgmifs(
 
 This package accompanies the manuscript:
 
-**Pi-GMIFS 2: Negative Binomial Path-Following Penalized Generalized Linear Model**
+**ecountGMIFS: Extended generalized monotone incremental forward stagewise regression for penalized negative binomial path-following modeling of high-dimensional count data**
 Alikhan Anuarbekov and Jiří Kléma
 
 Please cite the associated paper if you use this package in academic work.
