@@ -19,7 +19,7 @@ Description: Implements an extended generalized monotone incremental
     forward stagewise framework for high-dimensional count regression.
     The package provides tools for fitting regularized count models with
     optional prior or structural information.
-License: GPL (>= 3)
+License: MIT + file LICENSE
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
 Suggests: 
@@ -37,3 +37,6 @@ LinkingTo:
     Rcpp,
     RcppArmadillo
 Config/roxygen2/version: 8.0.0
+Depends: 
+    R (>= 3.5)
+LazyData: true

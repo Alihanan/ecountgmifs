@@ -11,9 +11,9 @@ Rcpp::Rostream<true>&  Rcpp::Rcout = Rcpp::Rcpp_cout_get();
 Rcpp::Rostream<false>& Rcpp::Rcerr = Rcpp::Rcpp_cerr_get();
 #endif
 
-// ecountgmifs_call_score_criterion
-double ecountgmifs_call_score_criterion(SEXP criterion, uint64_t iteration, double negloglik, double unpenalized_negloglik, double saturated_negloglik, double n, double p, double nnz, double df, double active_size, double dispersion, double enet_norm, double epsilon);
-RcppExport SEXP _ecountgmifs_ecountgmifs_call_score_criterion(SEXP criterionSEXP, SEXP iterationSEXP, SEXP negloglikSEXP, SEXP unpenalized_negloglikSEXP, SEXP saturated_negloglikSEXP, SEXP nSEXP, SEXP pSEXP, SEXP nnzSEXP, SEXP dfSEXP, SEXP active_sizeSEXP, SEXP dispersionSEXP, SEXP enet_normSEXP, SEXP epsilonSEXP) {
+// ecountgmifs_test_call_score_criterion
+double ecountgmifs_test_call_score_criterion(SEXP criterion, uint64_t iteration, double negloglik, double unpenalized_negloglik, double saturated_negloglik, double n, double p, double nnz, double df, double active_size, double dispersion, double enet_norm, double epsilon);
+RcppExport SEXP _ecountgmifs_ecountgmifs_test_call_score_criterion(SEXP criterionSEXP, SEXP iterationSEXP, SEXP negloglikSEXP, SEXP unpenalized_negloglikSEXP, SEXP saturated_negloglikSEXP, SEXP nSEXP, SEXP pSEXP, SEXP nnzSEXP, SEXP dfSEXP, SEXP active_sizeSEXP, SEXP dispersionSEXP, SEXP enet_normSEXP, SEXP epsilonSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
@@ -30,7 +30,7 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< double >::type dispersion(dispersionSEXP);
     Rcpp::traits::input_parameter< double >::type enet_norm(enet_normSEXP);
     Rcpp::traits::input_parameter< double >::type epsilon(epsilonSEXP);
-    rcpp_result_gen = Rcpp::wrap(ecountgmifs_call_score_criterion(criterion, iteration, negloglik, unpenalized_negloglik, saturated_negloglik, n, p, nnz, df, active_size, dispersion, enet_norm, epsilon));
+    rcpp_result_gen = Rcpp::wrap(ecountgmifs_test_call_score_criterion(criterion, iteration, negloglik, unpenalized_negloglik, saturated_negloglik, n, p, nnz, df, active_size, dispersion, enet_norm, epsilon));
     return rcpp_result_gen;
 END_RCPP
 }
@@ -72,7 +72,7 @@ END_RCPP
 }
 
 static const R_CallMethodDef CallEntries[] = {
-    {"_ecountgmifs_ecountgmifs_call_score_criterion", (DL_FUNC) &_ecountgmifs_ecountgmifs_call_score_criterion, 13},
+    {"_ecountgmifs_ecountgmifs_test_call_score_criterion", (DL_FUNC) &_ecountgmifs_ecountgmifs_test_call_score_criterion, 13},
     {"_ecountgmifs_ecountgmifs_cpp", (DL_FUNC) &_ecountgmifs_ecountgmifs_cpp, 26},
     {NULL, NULL, 0}
 };

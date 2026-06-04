@@ -97,9 +97,10 @@ criteria = list(
 )
 }
 
-This shows the three accepted forms: a criterion-constructor function, an
-already compiled criterion object, and the character name of a criterion
-constructor function. Character values are resolved to functions and called.
-This allows users to define their own criterion-constructor functions and
-pass them by name.
+This shows the three accepted forms: a criterion-constructor function
+such as \code{AIC_nnz}, an already compiled criterion object such as
+\code{BIC_nnz()}, and the character name of a criterion-constructor
+function such as \code{"SABIC_nnz"}. Character values are resolved to
+functions and called. This allows users to define their own
+criterion-constructor functions and pass them by name.
 }
