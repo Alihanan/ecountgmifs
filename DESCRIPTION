@@ -25,7 +25,8 @@ Roxygen: list(markdown = TRUE)
 Suggests: 
     knitr,
     rmarkdown,
-    testthat (>= 3.0.0)
+    testthat (>= 3.0.0),
+    edgeR
 Config/testthat/edition: 3
 VignetteBuilder: knitr
 Imports: 

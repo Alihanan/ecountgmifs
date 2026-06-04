@@ -46,8 +46,7 @@ The package includes `mrna97_rnaseq`, an RNA-seq example dataset derived from th
 data(mrna97_rnaseq)
 
 names(mrna97_rnaseq)
-#> [1] "Y"             "X"             "prior"         "truth"
-#> [5] "organ"         "organ7cluster"
+#> [1] "Y"      "X"      "prior"  "truth"  "sample"
 
 dim(mrna97_rnaseq$Y)
 #> 434 97
@@ -61,18 +60,16 @@ dim(mrna97_rnaseq$prior)
 dim(mrna97_rnaseq$truth)
 #> 97 2636
 
-table(mrna97_rnaseq$organ)
-table(mrna97_rnaseq$organ7cluster)
+head(mrna97_rnaseq$sample)
 ```
 
-The dataset is stored as a list with six elements:
+The dataset is stored as a list with five elements:
 
 * `Y`: response matrix with 434 samples and 97 mRNA target variables.
 * `X`: predictor matrix with 434 samples and 2636 candidate predictor variables.
 * `prior`: binary prior-knowledge matrix with 97 rows and 2636 columns, using target-by-predictor orientation.
 * `truth`: binary ground-truth matrix with the same orientation as `prior`.
-* `organ`: sample-level metadata with organ-type annotations.
-* `organ7cluster`: previous organ-type metadata clustered into 7 groups.
+* `sample`: sample-level metadata with fine-grained and higher-level tissue annotations.
 
 A basic single-target fit can be run as follows:
 
@@ -94,54 +91,76 @@ fit <- ecountgmifs(
 )
 ```
 
-## Packaged airport passenger-flow dataset
 
-The package also includes `airport_t100`, a monthly airport passenger-flow dataset derived from the T-100 Domestic Segment benchmark. This dataset is intended for controlled network-recovery experiments where each airport can be used as a response and all other airports can be used as candidate predictors.
+## Preprocessing utilities
 
-```r
-data(airport_t100)
+The package includes preprocessing helpers matching the normalization and transformation strategies used in the RNA-seq and airport experiments.
 
-names(airport_t100)
-
-dim(airport_t100$X)
-dim(airport_t100$GT1)
-dim(airport_t100$GT12)
-dim(airport_t100$GT120)
-dim(airport_t100$GT216)
-dim(airport_t100$GT432)
-```
-
-The dataset is stored as a list with airport-level count data and multiple ground-truth adjacency matrices:
-
-* `X`: monthly airport-level passenger-count matrix. Rows correspond to monthly observations and columns correspond to airports.
-* `GT1`: binary route network for routes active in at least 1 month.
-* `GT12`: binary route network for routes active in at least 12 months.
-* `GT120`: binary route network for routes active in at least 120 months.
-* `GT216`: binary route network for routes active in at least 216 months.
-* `GT432`: binary route network for routes active in all 432 months.
-* `sample`: monthly sample metadata, such as year, month, and date.
-* `airport`: airport metadata corresponding to the columns of `X` and the rows/columns of the ground-truth matrices.
-
-All ground-truth matrices use destination-by-origin orientation. Rows correspond to destination airports and columns correspond to origin airports.
-
-A basic single-airport regression setup can be constructed as follows:
+For RNA-seq-style count matrices, sample-level normalization can be applied before predictor transformation:
 
 ```r
-data(airport_t100)
+data(mrna97_rnaseq)
 
-i <- 1
+X_cpm <- normalize_counts(
+  mrna97_rnaseq$X,
+  method = "cpm"
+)
 
-y <- airport_t100$X[, i]
-X <- airport_t100$X[, -i, drop = FALSE]
-truth_i <- airport_t100$GT12[i, -i]
-
-fit_airport <- ecountgmifs(
-  X = X,
-  y = y,
-  family = "negative.binomial",
-  enet.alpha = 0.75
+X_pre <- transform_predictors(
+  X_cpm,
+  method = "standardize_log1p"
 )
 ```
+
+Available count normalizations are:
+
+* `"none"`: keep the original scale.
+* `"cpm"`: counts per million scaling.
+* `"tmm"`: TMM normalization through `edgeR`, if `edgeR` is installed.
+
+Available RNA-seq predictor transformations are:
+
+* `"none"`
+* `"log1p"`
+* `"asinh"`
+* `"standardize"`
+* `"standardize_log1p"`
+* `"standardize_asinh"`
+
+For negative-binomial models, the response should usually remain on the original count scale. When an offset is needed, request the normalization factor:
+
+```r
+norm <- normalize_counts(
+  mrna97_rnaseq$X,
+  method = "cpm",
+  return.offset = TRUE
+)
+
+X_cpm <- norm$x
+offset <- norm$offset
+```
+
+For monthly airport passenger-flow matrices, temporal transformations can be applied to reduce seasonal and system-wide temporal effects:
+
+```r
+data(airport_t100)
+
+X_air <- transform_time_series(
+  airport_t100$X,
+  method = "log1p_month_demean",
+  month = airport_t100$sample$month
+)
+```
+
+Available temporal transformations are:
+
+* `"none"`
+* `"log1p_month_demean"`
+* `"month_z"`
+* `"log1p_month_z"`
+* `"log1p_gaussian_smooth"`
+* `"log1p_gaussian_smooth_month_demean"`
+* `"log1p_diff1"`
 
 ## Prior-weighted fitting
 
@@ -208,7 +227,6 @@ The example criteria are compiled C++ functions. Repeated calls with the same so
 * Information-criterion-based solution-path selection
 * Runtime-compilable custom selection criteria
 * Public RNA-seq example dataset with prior and ground-truth interaction matrices
-* Public airport passenger-flow example dataset with multiple ground-truth route networks
 * R interface with C++ implementation through Rcpp
 
 ## Related paper
@@ -221,8 +239,6 @@ Alikhan Anuarbekov and Jiří Kléma
 The packaged `mrna97_rnaseq` dataset is adapted from the RNA-seq and prior-knowledge setup described in:
 
 Anuarbekov, A. and Kléma, J. (2025). Utilizing RNA-seq data in monotone iterative generalized linear model to elevate prior knowledge quality of the circRNA-miRNA-mRNA regulatory axis. *BMC Bioinformatics*, 26, 139. https://doi.org/10.1186/s12859-025-06161-w
-
-The packaged `airport_t100` dataset is adapted from the T-100 Domestic Segment passenger-flow benchmark described in the ecountGMIFS manuscript, using data from the U.S. Bureau of Transportation Statistics.
 
 Please cite the associated paper if you use this package or dataset in academic work.
 
