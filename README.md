@@ -46,7 +46,8 @@ The package includes `mrna97_rnaseq`, an RNA-seq example dataset derived from th
 data(mrna97_rnaseq)
 
 names(mrna97_rnaseq)
-#> [1] "Y"      "X"      "prior"  "truth"  "sample"
+#> [1] "Y"             "X"             "prior"         "truth"
+#> [5] "organ"         "organ7cluster"
 
 dim(mrna97_rnaseq$Y)
 #> 434 97
@@ -60,11 +61,11 @@ dim(mrna97_rnaseq$prior)
 dim(mrna97_rnaseq$truth)
 #> 97 2636
 
-table(mrna97_rnaseq$organ) 
+table(mrna97_rnaseq$organ)
 table(mrna97_rnaseq$organ7cluster)
 ```
 
-The dataset is stored as a list with five elements:
+The dataset is stored as a list with six elements:
 
 * `Y`: response matrix with 434 samples and 97 mRNA target variables.
 * `X`: predictor matrix with 434 samples and 2636 candidate predictor variables.
@@ -88,6 +89,55 @@ fit <- ecountgmifs(
   X = X,
   y = Y[, j],
   weight.vec = ifelse(prior[j, ], 0.1, 1),
+  family = "negative.binomial",
+  enet.alpha = 0.75
+)
+```
+
+## Packaged airport passenger-flow dataset
+
+The package also includes `airport_t100`, a monthly airport passenger-flow dataset derived from the T-100 Domestic Segment benchmark. This dataset is intended for controlled network-recovery experiments where each airport can be used as a response and all other airports can be used as candidate predictors.
+
+```r
+data(airport_t100)
+
+names(airport_t100)
+
+dim(airport_t100$X)
+dim(airport_t100$GT1)
+dim(airport_t100$GT12)
+dim(airport_t100$GT120)
+dim(airport_t100$GT216)
+dim(airport_t100$GT432)
+```
+
+The dataset is stored as a list with airport-level count data and multiple ground-truth adjacency matrices:
+
+* `X`: monthly airport-level passenger-count matrix. Rows correspond to monthly observations and columns correspond to airports.
+* `GT1`: binary route network for routes active in at least 1 month.
+* `GT12`: binary route network for routes active in at least 12 months.
+* `GT120`: binary route network for routes active in at least 120 months.
+* `GT216`: binary route network for routes active in at least 216 months.
+* `GT432`: binary route network for routes active in all 432 months.
+* `sample`: monthly sample metadata, such as year, month, and date.
+* `airport`: airport metadata corresponding to the columns of `X` and the rows/columns of the ground-truth matrices.
+
+All ground-truth matrices use destination-by-origin orientation. Rows correspond to destination airports and columns correspond to origin airports.
+
+A basic single-airport regression setup can be constructed as follows:
+
+```r
+data(airport_t100)
+
+i <- 1
+
+y <- airport_t100$X[, i]
+X <- airport_t100$X[, -i, drop = FALSE]
+truth_i <- airport_t100$GT12[i, -i]
+
+fit_airport <- ecountgmifs(
+  X = X,
+  y = y,
   family = "negative.binomial",
   enet.alpha = 0.75
 )
@@ -158,6 +208,7 @@ The example criteria are compiled C++ functions. Repeated calls with the same so
 * Information-criterion-based solution-path selection
 * Runtime-compilable custom selection criteria
 * Public RNA-seq example dataset with prior and ground-truth interaction matrices
+* Public airport passenger-flow example dataset with multiple ground-truth route networks
 * R interface with C++ implementation through Rcpp
 
 ## Related paper
@@ -170,6 +221,8 @@ Alikhan Anuarbekov and Jiří Kléma
 The packaged `mrna97_rnaseq` dataset is adapted from the RNA-seq and prior-knowledge setup described in:
 
 Anuarbekov, A. and Kléma, J. (2025). Utilizing RNA-seq data in monotone iterative generalized linear model to elevate prior knowledge quality of the circRNA-miRNA-mRNA regulatory axis. *BMC Bioinformatics*, 26, 139. https://doi.org/10.1186/s12859-025-06161-w
+
+The packaged `airport_t100` dataset is adapted from the T-100 Domestic Segment passenger-flow benchmark described in the ecountGMIFS manuscript, using data from the U.S. Bureau of Transportation Statistics.
 
 Please cite the associated paper if you use this package or dataset in academic work.
 

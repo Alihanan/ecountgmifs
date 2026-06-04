@@ -82,8 +82,104 @@
 #' table(mrna97_rnaseq$organ7cluster)
 #'
 #' stopifnot(nrow(mrna97_rnaseq$Y) == nrow(mrna97_rnaseq$X))
-#' stopifnot(nrow(mrna97_rnaseq$Y) == nrow(mrna97_rnaseq$sample))
+#' stopifnot(nrow(mrna97_rnaseq$Y) == length(mrna97_rnaseq$organ))
 #' stopifnot(nrow(mrna97_rnaseq$prior) == ncol(mrna97_rnaseq$Y))
 #' stopifnot(ncol(mrna97_rnaseq$prior) == ncol(mrna97_rnaseq$X))
 #' stopifnot(identical(dim(mrna97_rnaseq$prior), dim(mrna97_rnaseq$truth)))
 "mrna97_rnaseq"
+
+
+
+
+
+#' T-100 airport passenger-flow network dataset
+#'
+#' @description
+#' Monthly airport passenger-flow dataset for demonstrating network recovery
+#' with extended count GMIFS. The dataset contains a monthly airport-level count
+#' matrix and multiple binary ground-truth route networks constructed using
+#' different temporal persistence thresholds.
+#'
+#' @format A list with eight elements:
+#' \describe{
+#'   \item{\code{X}}{
+#'     Numeric matrix with rows corresponding to monthly observations and
+#'     columns corresponding to airports. Each column represents an airport-level
+#'     passenger-count time series used as a response or predictor depending on
+#'     the target airport.
+#'   }
+#'   \item{\code{GT1}}{
+#'     Logical or binary adjacency matrix for routes active in at least 1 month.
+#'   }
+#'   \item{\code{GT12}}{
+#'     Logical or binary adjacency matrix for routes active in at least 12 months.
+#'   }
+#'   \item{\code{GT120}}{
+#'     Logical or binary adjacency matrix for routes active in at least 120 months.
+#'   }
+#'   \item{\code{GT216}}{
+#'     Logical or binary adjacency matrix for routes active in at least 216 months.
+#'   }
+#'   \item{\code{GT432}}{
+#'     Logical or binary adjacency matrix for routes active in all 432 months.
+#'   }
+#'   \item{\code{sample}}{
+#'     Data frame with one row per monthly observation, containing time metadata
+#'     such as year, month, and date.
+#'   }
+#'   \item{\code{airport}}{
+#'     Data frame with one row per airport. The rows correspond to the columns of
+#'     \code{X} and to the rows and columns of the ground-truth matrices.
+#'   }
+#' }
+#'
+#' @details
+#' The airport benchmark is formulated as a directed network-recovery task.
+#' For each destination airport, the response is its monthly inbound passenger
+#' count and the candidate predictors are monthly outbound passenger counts from
+#' the other airports. A selected predictor is interpreted as a directed route
+#' from the predictor/origin airport to the response/destination airport.
+#'
+#' All ground-truth matrices use destination-by-origin orientation. Rows
+#' correspond to destination airports and columns correspond to origin airports.
+#' For a temporal persistence threshold \code{q}, an edge is present if the
+#' corresponding origin-destination route is active in at least \code{q} months.
+#'
+#' The included thresholds are:
+#' \describe{
+#'   \item{\code{GT1}}{Route observed in at least 1 month.}
+#'   \item{\code{GT12}}{Route observed in at least 12 months.}
+#'   \item{\code{GT120}}{Route observed in at least 120 months.}
+#'   \item{\code{GT216}}{Route observed in at least 216 months.}
+#'   \item{\code{GT432}}{Route observed in all 432 months.}
+#' }
+#'
+#' @examples
+#' data(airport_t100)
+#'
+#' names(airport_t100)
+#' dim(airport_t100$X)
+#' dim(airport_t100$GT12)
+#'
+#' i <- 1
+#' y <- airport_t100$X[, i]
+#' X <- airport_t100$X[, -i, drop = FALSE]
+#' truth_i <- airport_t100$GT12[i, -i]
+#'
+#' stopifnot(nrow(airport_t100$X) == nrow(airport_t100$sample))
+#' stopifnot(ncol(airport_t100$X) == nrow(airport_t100$airport))
+#' stopifnot(identical(dim(airport_t100$GT1), dim(airport_t100$GT12)))
+#' stopifnot(identical(dim(airport_t100$GT12), dim(airport_t100$GT120)))
+#' stopifnot(identical(dim(airport_t100$GT120), dim(airport_t100$GT216)))
+#' stopifnot(identical(dim(airport_t100$GT216), dim(airport_t100$GT432)))
+#'
+#' @source
+#' Adapted from the T-100 Domestic Segment passenger-flow benchmark described in
+#' Anuarbekov and Kléma, using data from the U.S. Bureau of Transportation
+#' Statistics.
+#'
+#' @references
+#' Anuarbekov, A. and Kléma, J. Extended generalized monotone incremental
+#' forward stagewise regression for penalized negative binomial path-following
+#' modeling of high-dimensional count data.
+"airport_t100"

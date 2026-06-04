@@ -84,7 +84,7 @@ table(mrna97_rnaseq$organ)
 table(mrna97_rnaseq$organ7cluster)
 
 stopifnot(nrow(mrna97_rnaseq$Y) == nrow(mrna97_rnaseq$X))
-stopifnot(nrow(mrna97_rnaseq$Y) == nrow(mrna97_rnaseq$sample))
+stopifnot(nrow(mrna97_rnaseq$Y) == length(mrna97_rnaseq$organ))
 stopifnot(nrow(mrna97_rnaseq$prior) == ncol(mrna97_rnaseq$Y))
 stopifnot(ncol(mrna97_rnaseq$prior) == ncol(mrna97_rnaseq$X))
 stopifnot(identical(dim(mrna97_rnaseq$prior), dim(mrna97_rnaseq$truth)))
