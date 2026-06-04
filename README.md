@@ -60,7 +60,8 @@ dim(mrna97_rnaseq$prior)
 dim(mrna97_rnaseq$truth)
 #> 97 2636
 
-head(mrna97_rnaseq$sample)
+table(mrna97_rnaseq$organ) 
+table(mrna97_rnaseq$organ7cluster)
 ```
 
 The dataset is stored as a list with five elements:
@@ -69,7 +70,8 @@ The dataset is stored as a list with five elements:
 * `X`: predictor matrix with 434 samples and 2636 candidate predictor variables.
 * `prior`: binary prior-knowledge matrix with 97 rows and 2636 columns, using target-by-predictor orientation.
 * `truth`: binary ground-truth matrix with the same orientation as `prior`.
-* `sample`: sample-level metadata with fine-grained and higher-level tissue annotations.
+* `organ`: sample-level metadata with organ-type annotations.
+* `organ7cluster`: previous organ-type metadata clustered into 7 groups.
 
 A basic single-target fit can be run as follows:
 
