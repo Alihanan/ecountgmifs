@@ -1,26 +1,6 @@
 #pragma once
 
-#include <RcppArmadillo.h>
-
-enum EnumStateTrackStrategy
-{
-  ACTIVE_SET_CHANGE = 0,
-  ALL_ITERATION = 1,
-  EVERY_K_ITERATION = 2,
-  NO_STATE_TRACKING = 3
-};
-
-enum EnumLinkFunc
-{
-  LOG_LINK = 0,
-  SOFTPLUS_LINK = 1
-};
-
-enum EnumFamily
-{
-  NEGATIVE_BINOMIAL = 0,
-  POISSON = 1
-};
+#include "../inst/include/ecountgmifs/api.h"
 
 inline EnumStateTrackStrategy as_track_strategy(int x)
 {

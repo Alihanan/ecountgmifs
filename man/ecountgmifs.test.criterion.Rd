@@ -9,16 +9,15 @@ ecountgmifs.test.criterion(criterion, ...)
 \arguments{
 \item{criterion}{object of class \code{"ecountgmifs.criterion"}.}
 
-\item{...}{Score fields passed to the internal criterion-calling routine,
-such as \code{negloglik}, \code{n}, \code{p}, \code{nnz},
-\code{df}, \code{active_size}, \code{dispersion}, \code{enet_norm}, and
-\code{epsilon}.}
+\item{...}{Context fields passed to the internal criterion-calling routine,
+such as \code{loglik}, \code{iteration}, \code{epsilon}, \code{dispersion},
+and small test matrices/vectors when supported by the test helper.}
 }
 \value{
 Numeric value returned by the compiled criterion.
 }
 \description{
-Calls a compiled criterion object on a manually constructed score. This is
+Calls a compiled criterion object on a manually constructed context. This is
 useful for checking that custom C++ criteria compile correctly and return the
 expected value before using them inside \code{ecountgmifs()}.
 }

@@ -16,15 +16,25 @@
 #'
 #' The C++ code should define a C-compatible function with signature
 #' \preformatted{
-#' extern "C" double criterion_name(const Score* s);
+#' extern "C" double criterion_name(const EcountgmifsContext* ctx);
 #' }
 #'
-#' The C++ code should include the public score header:
+#' The C++ code should include the public API header:
 #' \preformatted{
 #' #include <Rcpp.h>
 #' // [[Rcpp::depends(ecountgmifs)]]
 #'
-#' #include <ecountgmifs/score.h>
+#' #include <ecountgmifs/api.h>
+#' }
+#'
+#' The context object provides read-only access to the model input, control
+#' settings, and current state:
+#' \preformatted{
+#' ctx->input.X
+#' ctx->input.y
+#' ctx->state.beta
+#' ctx->state.loglik
+#' ctx->state.iteration
 #' }
 #'
 #' @param code character. C++ source code defining the criterion function.
@@ -34,6 +44,44 @@
 #'   criterion with the same \code{code} and \code{symbol}.
 #'
 #' @return An object of class \code{"ecountgmifs.criterion"}.
+#'
+#' @examples
+#' code <- '
+#' #include <Rcpp.h>
+#' // [[Rcpp::depends(ecountgmifs)]]
+#'
+#' #include <ecountgmifs/api.h>
+#' #include <cmath>
+#'
+#' extern "C" double cpp_score_my_bic(const EcountgmifsContext* ctx)
+#' {
+#'   double negloglik = -1.0 * ctx->state.loglik;
+#'   double n = static_cast<double>(ctx->input.X.n_rows);
+#'   double nnz = arma::accu(ctx->state.beta != 0.0);
+#'
+#'   return 2.0 * negloglik + std::log(n) * nnz;
+#' }
+#'
+#' // [[Rcpp::export]]
+#' int cpp_anchor_my_bic()
+#' {
+#'   return 0;
+#' }
+#' '
+#'
+#' criterion <- ecountgmifs.compile.criterion(
+#'   code = code,
+#'   symbol = "cpp_score_my_bic",
+#'   name = "my_bic"
+#' )
+#'
+#' ecountgmifs.test.criterion(
+#'   criterion,
+#'   loglik = -200,
+#'   n = 100,
+#'   p = 20,
+#'   nnz = 3
+#' )
 #'
 #' @export
 ecountgmifs.compile.criterion <- function(
@@ -195,15 +243,14 @@ ecountgmifs.list.criterion.cache <- function() {
 #' Test a compiled criterion
 #'
 #' @description
-#' Calls a compiled criterion object on a manually constructed score. This is
+#' Calls a compiled criterion object on a manually constructed context. This is
 #' useful for checking that custom C++ criteria compile correctly and return the
 #' expected value before using them inside \code{ecountgmifs()}.
 #'
 #' @param criterion object of class \code{"ecountgmifs.criterion"}.
-#' @param ... Score fields passed to the internal criterion-calling routine,
-#'   such as \code{negloglik}, \code{n}, \code{p}, \code{nnz},
-#'   \code{df}, \code{active_size}, \code{dispersion}, \code{enet_norm}, and
-#'   \code{epsilon}.
+#' @param ... Context fields passed to the internal criterion-calling routine,
+#'   such as \code{loglik}, \code{iteration}, \code{epsilon}, \code{dispersion},
+#'   and small test matrices/vectors when supported by the test helper.
 #'
 #' @return Numeric value returned by the compiled criterion.
 #'

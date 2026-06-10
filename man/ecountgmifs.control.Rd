@@ -9,7 +9,7 @@ ecountgmifs.control(
   epsilon.max = 0.01,
   epsilon.start = 1e-06,
   epsilon.min = .Machine$double.eps,
-  tol = 1e-16,
+  tol = 1e-08,
   nlopt.optim.reltol = tol,
   loglik.reltol.cutoff = 0.25,
   state.track.strategy = c("active.set.change", "all.iteration", "every.k.iteration",

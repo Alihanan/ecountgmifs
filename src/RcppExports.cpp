@@ -11,32 +11,33 @@ Rcpp::Rostream<true>&  Rcpp::Rcout = Rcpp::Rcpp_cout_get();
 Rcpp::Rostream<false>& Rcpp::Rcerr = Rcpp::Rcpp_cerr_get();
 #endif
 
-// ecountgmifs_test_call_score_criterion
-double ecountgmifs_test_call_score_criterion(SEXP criterion, uint64_t iteration, double negloglik, double unpenalized_negloglik, double saturated_negloglik, double n, double p, double nnz, double df, double active_size, double dispersion, double enet_norm, double epsilon);
-RcppExport SEXP _ecountgmifs_ecountgmifs_test_call_score_criterion(SEXP criterionSEXP, SEXP iterationSEXP, SEXP negloglikSEXP, SEXP unpenalized_negloglikSEXP, SEXP saturated_negloglikSEXP, SEXP nSEXP, SEXP pSEXP, SEXP nnzSEXP, SEXP dfSEXP, SEXP active_sizeSEXP, SEXP dispersionSEXP, SEXP enet_normSEXP, SEXP epsilonSEXP) {
+// ecountgmifs_call_context_criterion
+double ecountgmifs_call_context_criterion(SEXP criterion_ptr, double negloglik, uint64_t iteration, double dispersion, double epsilon, bool initialized, double n, double p, double q, double beta_value, double beta_nonzero_value, uint64_t nnz, double enet_alpha, bool include_data);
+RcppExport SEXP _ecountgmifs_ecountgmifs_call_context_criterion(SEXP criterion_ptrSEXP, SEXP negloglikSEXP, SEXP iterationSEXP, SEXP dispersionSEXP, SEXP epsilonSEXP, SEXP initializedSEXP, SEXP nSEXP, SEXP pSEXP, SEXP qSEXP, SEXP beta_valueSEXP, SEXP beta_nonzero_valueSEXP, SEXP nnzSEXP, SEXP enet_alphaSEXP, SEXP include_dataSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
-    Rcpp::traits::input_parameter< SEXP >::type criterion(criterionSEXP);
-    Rcpp::traits::input_parameter< uint64_t >::type iteration(iterationSEXP);
+    Rcpp::traits::input_parameter< SEXP >::type criterion_ptr(criterion_ptrSEXP);
     Rcpp::traits::input_parameter< double >::type negloglik(negloglikSEXP);
-    Rcpp::traits::input_parameter< double >::type unpenalized_negloglik(unpenalized_negloglikSEXP);
-    Rcpp::traits::input_parameter< double >::type saturated_negloglik(saturated_negloglikSEXP);
+    Rcpp::traits::input_parameter< uint64_t >::type iteration(iterationSEXP);
+    Rcpp::traits::input_parameter< double >::type dispersion(dispersionSEXP);
+    Rcpp::traits::input_parameter< double >::type epsilon(epsilonSEXP);
+    Rcpp::traits::input_parameter< bool >::type initialized(initializedSEXP);
     Rcpp::traits::input_parameter< double >::type n(nSEXP);
     Rcpp::traits::input_parameter< double >::type p(pSEXP);
-    Rcpp::traits::input_parameter< double >::type nnz(nnzSEXP);
-    Rcpp::traits::input_parameter< double >::type df(dfSEXP);
-    Rcpp::traits::input_parameter< double >::type active_size(active_sizeSEXP);
-    Rcpp::traits::input_parameter< double >::type dispersion(dispersionSEXP);
-    Rcpp::traits::input_parameter< double >::type enet_norm(enet_normSEXP);
-    Rcpp::traits::input_parameter< double >::type epsilon(epsilonSEXP);
-    rcpp_result_gen = Rcpp::wrap(ecountgmifs_test_call_score_criterion(criterion, iteration, negloglik, unpenalized_negloglik, saturated_negloglik, n, p, nnz, df, active_size, dispersion, enet_norm, epsilon));
+    Rcpp::traits::input_parameter< double >::type q(qSEXP);
+    Rcpp::traits::input_parameter< double >::type beta_value(beta_valueSEXP);
+    Rcpp::traits::input_parameter< double >::type beta_nonzero_value(beta_nonzero_valueSEXP);
+    Rcpp::traits::input_parameter< uint64_t >::type nnz(nnzSEXP);
+    Rcpp::traits::input_parameter< double >::type enet_alpha(enet_alphaSEXP);
+    Rcpp::traits::input_parameter< bool >::type include_data(include_dataSEXP);
+    rcpp_result_gen = Rcpp::wrap(ecountgmifs_call_context_criterion(criterion_ptr, negloglik, iteration, dispersion, epsilon, initialized, n, p, q, beta_value, beta_nonzero_value, nnz, enet_alpha, include_data));
     return rcpp_result_gen;
 END_RCPP
 }
 // ecountgmifs_cpp
-Rcpp::List ecountgmifs_cpp(arma::mat X, arma::vec y, arma::mat w, arma::vec offset, arma::vec yorig, arma::mat Xtest, arma::vec ytest, arma::mat wtest, arma::vec offsettest, const arma::vec& weight_vec, double enet_alpha, double epsilon_start, double epsilon_max, double epsilon_min_tol, double tol, uint32_t iteration_max, uint32_t family, uint32_t linkfunc_int, double nlopt_optim_reltol, double loglik_reltol_cutoff, bool verbose, bool is_fixed_disp, double fixed_disp_value, int state_track_strategy, uint64_t state_track_freq, Rcpp::Nullable<Rcpp::List> criteria);
-RcppExport SEXP _ecountgmifs_ecountgmifs_cpp(SEXP XSEXP, SEXP ySEXP, SEXP wSEXP, SEXP offsetSEXP, SEXP yorigSEXP, SEXP XtestSEXP, SEXP ytestSEXP, SEXP wtestSEXP, SEXP offsettestSEXP, SEXP weight_vecSEXP, SEXP enet_alphaSEXP, SEXP epsilon_startSEXP, SEXP epsilon_maxSEXP, SEXP epsilon_min_tolSEXP, SEXP tolSEXP, SEXP iteration_maxSEXP, SEXP familySEXP, SEXP linkfunc_intSEXP, SEXP nlopt_optim_reltolSEXP, SEXP loglik_reltol_cutoffSEXP, SEXP verboseSEXP, SEXP is_fixed_dispSEXP, SEXP fixed_disp_valueSEXP, SEXP state_track_strategySEXP, SEXP state_track_freqSEXP, SEXP criteriaSEXP) {
+Rcpp::List ecountgmifs_cpp(arma::mat X, arma::vec y, arma::mat w, arma::vec offset, arma::vec yorig, arma::mat Xtest, arma::vec ytest, arma::mat wtest, arma::vec offsettest, const arma::vec& weight_vec, double enet_alpha, double epsilon_start, double epsilon_max, double epsilon_min_tol, double tol, uint32_t iteration_max, uint32_t family, uint32_t linkfunc_int, double nlopt_optim_reltol, double loglik_reltol_cutoff, bool verbose, bool is_fixed_disp, double fixed_disp_value, bool include_data, int state_track_strategy, uint64_t state_track_freq, Rcpp::Nullable<Rcpp::List> criteria);
+RcppExport SEXP _ecountgmifs_ecountgmifs_cpp(SEXP XSEXP, SEXP ySEXP, SEXP wSEXP, SEXP offsetSEXP, SEXP yorigSEXP, SEXP XtestSEXP, SEXP ytestSEXP, SEXP wtestSEXP, SEXP offsettestSEXP, SEXP weight_vecSEXP, SEXP enet_alphaSEXP, SEXP epsilon_startSEXP, SEXP epsilon_maxSEXP, SEXP epsilon_min_tolSEXP, SEXP tolSEXP, SEXP iteration_maxSEXP, SEXP familySEXP, SEXP linkfunc_intSEXP, SEXP nlopt_optim_reltolSEXP, SEXP loglik_reltol_cutoffSEXP, SEXP verboseSEXP, SEXP is_fixed_dispSEXP, SEXP fixed_disp_valueSEXP, SEXP include_dataSEXP, SEXP state_track_strategySEXP, SEXP state_track_freqSEXP, SEXP criteriaSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
@@ -63,17 +64,18 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< bool >::type verbose(verboseSEXP);
     Rcpp::traits::input_parameter< bool >::type is_fixed_disp(is_fixed_dispSEXP);
     Rcpp::traits::input_parameter< double >::type fixed_disp_value(fixed_disp_valueSEXP);
+    Rcpp::traits::input_parameter< bool >::type include_data(include_dataSEXP);
     Rcpp::traits::input_parameter< int >::type state_track_strategy(state_track_strategySEXP);
     Rcpp::traits::input_parameter< uint64_t >::type state_track_freq(state_track_freqSEXP);
     Rcpp::traits::input_parameter< Rcpp::Nullable<Rcpp::List> >::type criteria(criteriaSEXP);
-    rcpp_result_gen = Rcpp::wrap(ecountgmifs_cpp(X, y, w, offset, yorig, Xtest, ytest, wtest, offsettest, weight_vec, enet_alpha, epsilon_start, epsilon_max, epsilon_min_tol, tol, iteration_max, family, linkfunc_int, nlopt_optim_reltol, loglik_reltol_cutoff, verbose, is_fixed_disp, fixed_disp_value, state_track_strategy, state_track_freq, criteria));
+    rcpp_result_gen = Rcpp::wrap(ecountgmifs_cpp(X, y, w, offset, yorig, Xtest, ytest, wtest, offsettest, weight_vec, enet_alpha, epsilon_start, epsilon_max, epsilon_min_tol, tol, iteration_max, family, linkfunc_int, nlopt_optim_reltol, loglik_reltol_cutoff, verbose, is_fixed_disp, fixed_disp_value, include_data, state_track_strategy, state_track_freq, criteria));
     return rcpp_result_gen;
 END_RCPP
 }
 
 static const R_CallMethodDef CallEntries[] = {
-    {"_ecountgmifs_ecountgmifs_test_call_score_criterion", (DL_FUNC) &_ecountgmifs_ecountgmifs_test_call_score_criterion, 13},
-    {"_ecountgmifs_ecountgmifs_cpp", (DL_FUNC) &_ecountgmifs_ecountgmifs_cpp, 26},
+    {"_ecountgmifs_ecountgmifs_call_context_criterion", (DL_FUNC) &_ecountgmifs_ecountgmifs_call_context_criterion, 14},
+    {"_ecountgmifs_ecountgmifs_cpp", (DL_FUNC) &_ecountgmifs_ecountgmifs_cpp, 27},
     {NULL, NULL, 0}
 };
 

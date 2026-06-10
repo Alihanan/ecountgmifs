@@ -92,6 +92,7 @@ ecountgmifs <- function(
     verbose = F,
     fixed.dispersion = FALSE,
     fixed.dispersion.value = 0,
+    include.data = FALSE,
     control = ecountgmifs.control()
 ) {
   X <- as.matrix(X)
@@ -236,6 +237,8 @@ ecountgmifs <- function(
     fixed.dispersion.value = 0.0
   }
 
+  print("here")
+
 
   ecountgmifs_cpp(X = X,
                   y = y,
@@ -262,11 +265,10 @@ ecountgmifs <- function(
                   loglik_reltol_cutoff = control$loglik.reltol.cutoff,
                   is_fixed_disp = fixed.dispersion,
                   fixed_disp_value = fixed.dispersion.value,
-
+                  include_data = include.data,
                   state_track_strategy = control$state.track.strategy,
                   state_track_freq = control$state.track.freq,
 
                   criteria = criteria
                   )
-
 }

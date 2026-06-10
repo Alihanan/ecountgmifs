@@ -3,6 +3,8 @@
 // [[Rcpp::depends(RcppArmadillo)]]
 // [[Rcpp::depends(nloptr)]]
 
+
+
 #include <vector>
 #include <string>
 #include <cstdint>
@@ -12,10 +14,10 @@
 #include <time.h>
 #include <limits>
 
-
-#include "nlopt_optim_nonpen.h"
 #include "context.h"
-
+#include "nonpen_fit.h"
+#include "stagewise.h"
+#include "debug.h"
 
 // [[Rcpp::export]]
 Rcpp::List ecountgmifs_cpp(
@@ -47,16 +49,33 @@ Rcpp::List ecountgmifs_cpp(
     bool verbose = false,
     bool is_fixed_disp = false,
     double fixed_disp_value = 0.0,
+    bool include_data = false,
     int state_track_strategy = 0,
     uint64_t state_track_freq = 1,
 
     Rcpp::Nullable<Rcpp::List> criteria = R_NilValue
 ) {
 
+  ECOUNTGMIFS_VERBOSE(verbose,
+    "input dimensions: n=" << X.n_rows
+                           << ", p=" << X.n_cols
+                           << ", q=" << w.n_cols
+                           << ", ntest=" << Xtest.n_rows
+  );
+
+  ECOUNTGMIFS_VERBOSE(verbose,
+    "controls: iteration_max=" << iteration_max
+                               << ", epsilon_start=" << epsilon_start
+                               << ", epsilon_max=" << epsilon_max
+                               << ", epsilon_min=" << epsilon_min_tol
+                               << ", tol=" << tol
+                               << ", nlopt_reltol=" << nlopt_optim_reltol
+  );
+
   // #########################################################
   //  Step 1: Save all arguments into a single context struct
   // #########################################################
-  EcountgmifsContext ctx = make_context(
+  EcountgmifsContextInternal ctx = make_context(
     X,
     y,
     w,
@@ -81,18 +100,44 @@ Rcpp::List ecountgmifs_cpp(
     is_fixed_disp,
     fixed_disp_value,
     state_track_strategy,
-    state_track_freq
+    state_track_freq,
+    include_data
+  );
+
+  ECOUNTGMIFS_VERBOSE(verbose,
+    "context created: beta_n=" << ctx.state.api.beta.n_elem
+                               << ", theta_n=" << ctx.state.api.theta.n_elem
+  );
+
+  ECOUNTGMIFS_VERBOSE(verbose,
+    "initial state: negloglik=" << ctx.state.api.negloglik
+                                << ", dispersion=" << ctx.state.api.dispersion
+                                << ", epsilon=" << ctx.state.api.epsilon
   );
 
   // #########################################################
-  //  Step 2: Estimate intercept/nonpen-only and
+  //  Step 2: Estimate intercept/nonpen-only and saturated model
   // #########################################################
-  fit_unpenalized_model_nlopt(ctx);
+  NonpenNlopters opt(ctx); // non-penalized parameter optimizator
 
-  double saturated_dispersion = 0.0;
-  double saturated_loglik = fit_saturated_dispersion_nlopt(
-    ctx,
-    saturated_dispersion
+  ECOUNTGMIFS_VERBOSE(verbose,"fitting nonpenalized model");
+
+  fit_nonpen(ctx, opt, ctx.control.api.iteration_max);
+
+  ECOUNTGMIFS_VERBOSE(verbose,
+    "nonpenalized fit done: initialized=" << ctx.state.api.initialized
+                                          << ", negloglik=" << ctx.state.api.negloglik
+                                          << ", dispersion=" << ctx.state.api.dispersion
+                                          << ", theta_norm=" << arma::norm(ctx.state.api.theta, 2)
+  );
+
+  ECOUNTGMIFS_VERBOSE(verbose,"fitting saturated model");
+  fit_saturated(ctx, opt);
+  ECOUNTGMIFS_VERBOSE(verbose,
+    "saturated fit done: saturated_negloglik="
+    << ctx.state.api.saturated_negloglik
+    << ", saturated_dispersion="
+    << ctx.state.api.saturated_dispersion
   );
 
 
@@ -104,6 +149,14 @@ Rcpp::List ecountgmifs_cpp(
     criteria_list = Rcpp::List(criteria);
   }
 
+  // #########################################################
+  //  Step 3: Run the main Forward-Stagewise loop
+  // #########################################################
+  ctx.track_state(); // save first non-penalized state regardless
+
+  fit_stagewise_path(ctx, opt);
+
+  ctx.track_state(); // save last state regardless
 
   // #########################################################
   //  Step X: Construct the final output list
@@ -152,20 +205,23 @@ Rcpp::List ecountgmifs_cpp(
 
   Rcpp::List output =
     Rcpp::List::create(
-      Rcpp::Named("model") = criteria_list,
-      Rcpp::Named("theta") = ctx.state.theta,
-      Rcpp::Named("dispersion") = ctx.state.dispersion,
-      Rcpp::Named("loglik.unpenalized") = ctx.state.loglik,
-      Rcpp::Named("dispersion.saturated") = saturated_dispersion,
-      Rcpp::Named("loglik.saturated") = saturated_loglik,
-      Rcpp::Named("initialized") = ctx.state.initialized
+      Rcpp::Named("model") = 123,
+      Rcpp::Named("beta") = ctx.state.api.beta,
+      Rcpp::Named("theta") = ctx.state.api.theta,
+      Rcpp::Named("dispersion") = ctx.state.api.dispersion,
+      Rcpp::Named("negloglik") = ctx.state.api.negloglik,
+      Rcpp::Named("dispersion.saturated") =
+        ctx.state.api.saturated_dispersion,
+      Rcpp::Named("negloglik.saturated") =
+        ctx.state.api.saturated_negloglik,
+      Rcpp::Named("iteration") = ctx.state.api.iteration,
+      Rcpp::Named("epsilon") = ctx.state.api.epsilon,
+      Rcpp::Named("initialized") = ctx.state.api.initialized,
+      Rcpp::Named("context") = ctx.to_list()
     );
 
 
   return output;
 }
-
-
-
 
 

@@ -213,7 +213,6 @@ fit <- ecountgmifs(
     BIC_hedf = bic_hedf
   )
 )
-```
 
 The example criteria are compiled C++ functions. Repeated calls with the same source code are cached within the R session.
 
@@ -225,7 +224,7 @@ The example criteria are compiled C++ functions. Repeated calls with the same so
 * Optional prior-weighted penalty rescaling
 * Support for unpenalized covariates through `w`
 * Information-criterion-based solution-path selection
-* Runtime-compilable custom selection criteria
+* Runtime-compilable custom C++ selection criteria with read-only context access
 * Public RNA-seq example dataset with prior and ground-truth interaction matrices
 * R interface with C++ implementation through Rcpp
 

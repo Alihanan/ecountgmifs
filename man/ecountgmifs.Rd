@@ -19,6 +19,7 @@ ecountgmifs(
   verbose = F,
   fixed.dispersion = FALSE,
   fixed.dispersion.value = 0,
+  include.data = FALSE,
   control = ecountgmifs.control()
 )
 }

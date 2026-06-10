@@ -1,41 +1,29 @@
 #pragma once
-#include "../inst/include/ecountgmifs/score.h"
-/*
- * It includes:
- *
-struct Score
-{
-  uint64_t iteration;
 
-  double negloglik;
-  double unpenalized_negloglik;
-  double saturated_negloglik;
+#include <RcppArmadillo.h>
 
-  double n;
-  double p;
+#include <limits>
+#include <string>
+#include <utility>
+#include <vector>
 
-  double nnz;
-  double df;
-  double active_size;
+#include "../inst/include/ecountgmifs/api.h"
 
-  double dispersion;
-  double enet_norm;
-  double epsilon;
-};
-*/
+typedef double (*criterion_fun_t)(const EcountgmifsContext*);
 
-typedef double (*criterion_fun_t)(const Score*);
-
-struct CriterionSpec
+struct CriterionValue
 {
   std::string name;
-  criterion_fun_t fn;
+  criterion_fun_t function;
 
-  CriterionSpec(
-    const std::string& name_,
-    criterion_fun_t fn_
+  double value;
+
+  CriterionValue(
+    std::string name_,
+    criterion_fun_t function_
   ) :
-    name(name_),
-    fn(fn_)
+    name(std::move(name_)),
+    function(function_),
+    value(std::numeric_limits<double>::infinity())
   {}
 };

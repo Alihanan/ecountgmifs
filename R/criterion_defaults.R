@@ -19,14 +19,18 @@
 #' @export
 AIC_nnz <- function(cache = TRUE) {
   code <- '
-#include <Rcpp.h>
+#include <RcppArmadillo.h>
+// [[Rcpp::depends(RcppArmadillo)]]
 // [[Rcpp::depends(ecountgmifs)]]
 
-#include <ecountgmifs/score.h>
+#include <ecountgmifs/api.h>
 
-extern "C" double cpp_score_AIC_nnz(const Score* s)
+extern "C" double cpp_score_AIC_nnz(const EcountgmifsContext* ctx)
 {
-  return 2.0 * s->negloglik + 2.0 * s->nnz;
+  double negloglik = ctx->state.negloglik;
+  double nnz = arma::accu(ctx->state.beta != 0.0);
+
+  return 2.0 * negloglik + 2.0 * nnz;
 }
 
 // [[Rcpp::export]]
@@ -66,15 +70,20 @@ int cpp_anchor_AIC_nnz()
 #' @export
 BIC_nnz <- function(cache = TRUE) {
   code <- '
-#include <Rcpp.h>
+#include <RcppArmadillo.h>
+// [[Rcpp::depends(RcppArmadillo)]]
 // [[Rcpp::depends(ecountgmifs)]]
 
-#include <ecountgmifs/score.h>
+#include <ecountgmifs/api.h>
 #include <cmath>
 
-extern "C" double cpp_score_BIC_nnz(const Score* s)
+extern "C" double cpp_score_BIC_nnz(const EcountgmifsContext* ctx)
 {
-  return 2.0 * s->negloglik + std::log(s->n) * s->nnz;
+  double negloglik = ctx->state.negloglik;
+  double n = static_cast<double>(ctx->input.X.n_rows);
+  double nnz = arma::accu(ctx->state.beta != 0.0);
+
+  return 2.0 * negloglik + std::log(n) * nnz;
 }
 
 // [[Rcpp::export]]
@@ -116,15 +125,20 @@ int cpp_anchor_BIC_nnz()
 #' @export
 SABIC_nnz <- function(cache = TRUE) {
   code <- '
-#include <Rcpp.h>
+#include <RcppArmadillo.h>
+// [[Rcpp::depends(RcppArmadillo)]]
 // [[Rcpp::depends(ecountgmifs)]]
 
-#include <ecountgmifs/score.h>
+#include <ecountgmifs/api.h>
 #include <cmath>
 
-extern "C" double cpp_score_SABIC_nnz(const Score* s)
+extern "C" double cpp_score_SABIC_nnz(const EcountgmifsContext* ctx)
 {
-  return 2.0 * s->negloglik + std::log((s->n + 2.0) / 24.0) * s->nnz;
+  double negloglik = ctx->state.negloglik;
+  double n = static_cast<double>(ctx->input.X.n_rows);
+  double nnz = arma::accu(ctx->state.beta != 0.0);
+
+  return 2.0 * negloglik + std::log((n + 2.0) / 24.0) * nnz;
 }
 
 // [[Rcpp::export]]
@@ -171,15 +185,21 @@ int cpp_anchor_SABIC_nnz()
 #' @export
 AIC_hedf <- function(cache = TRUE) {
   code <- '
-#include <Rcpp.h>
+#include <RcppArmadillo.h>
+// [[Rcpp::depends(RcppArmadillo)]]
 // [[Rcpp::depends(ecountgmifs)]]
 
-#include <ecountgmifs/score.h>
+#include <ecountgmifs/api.h>
 
-extern "C" double cpp_score_AIC_hedf(const Score* s)
+extern "C" double cpp_score_AIC_hedf(const EcountgmifsContext* ctx)
 {
-  double hedf = s->nnz * s->n / s->p;
-  return 2.0 * s->negloglik + 2.0 * hedf;
+  double negloglik = ctx->state.negloglik;
+  double n = static_cast<double>(ctx->input.X.n_rows);
+  double p = static_cast<double>(ctx->input.X.n_cols);
+  double nnz = arma::accu(ctx->state.beta != 0.0);
+  double hedf = nnz * n / p;
+
+  return 2.0 * negloglik + 2.0 * hedf;
 }
 
 // [[Rcpp::export]]
@@ -226,16 +246,22 @@ int cpp_anchor_AIC_hedf()
 #' @export
 BIC_hedf <- function(cache = TRUE) {
   code <- '
-#include <Rcpp.h>
+#include <RcppArmadillo.h>
+// [[Rcpp::depends(RcppArmadillo)]]
 // [[Rcpp::depends(ecountgmifs)]]
 
-#include <ecountgmifs/score.h>
+#include <ecountgmifs/api.h>
 #include <cmath>
 
-extern "C" double cpp_score_BIC_hedf(const Score* s)
+extern "C" double cpp_score_BIC_hedf(const EcountgmifsContext* ctx)
 {
-  double hedf = s->nnz * s->n / s->p;
-  return 2.0 * s->negloglik + std::log(s->n) * hedf;
+  double negloglik = ctx->state.negloglik;
+  double n = static_cast<double>(ctx->input.X.n_rows);
+  double p = static_cast<double>(ctx->input.X.n_cols);
+  double nnz = arma::accu(ctx->state.beta != 0.0);
+  double hedf = nnz * n / p;
+
+  return 2.0 * negloglik + std::log(n) * hedf;
 }
 
 // [[Rcpp::export]]
@@ -284,16 +310,22 @@ int cpp_anchor_BIC_hedf()
 #' @export
 SABIC_hedf <- function(cache = TRUE) {
   code <- '
-#include <Rcpp.h>
+#include <RcppArmadillo.h>
+// [[Rcpp::depends(RcppArmadillo)]]
 // [[Rcpp::depends(ecountgmifs)]]
 
-#include <ecountgmifs/score.h>
+#include <ecountgmifs/api.h>
 #include <cmath>
 
-extern "C" double cpp_score_SABIC_hedf(const Score* s)
+extern "C" double cpp_score_SABIC_hedf(const EcountgmifsContext* ctx)
 {
-  double hedf = s->nnz * s->n / s->p;
-  return 2.0 * s->negloglik + std::log((s->n + 2.0) / 24.0) * hedf;
+  double negloglik = ctx->state.negloglik;
+  double n = static_cast<double>(ctx->input.X.n_rows);
+  double p = static_cast<double>(ctx->input.X.n_cols);
+  double nnz = arma::accu(ctx->state.beta != 0.0);
+  double hedf = nnz * n / p;
+
+  return 2.0 * negloglik + std::log((n + 2.0) / 24.0) * hedf;
 }
 
 // [[Rcpp::export]]
