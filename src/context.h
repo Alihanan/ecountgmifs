@@ -13,82 +13,7 @@
 #include "loglik.h"
 #include "criteria.h"
 #include "numerical_internal_constants.h"
-
-inline void check_finite_scalar(
-    double x,
-    const std::string& name
-) {
-  if (!std::isfinite(x)) {
-    Rcpp::stop("value of '" + name + "' must be finite");
-  }
-}
-
-
-inline void check_nonnegative_scalar(
-    double x,
-    const std::string& name
-) {
-  check_finite_scalar(x, name);
-
-  if (x < 0.0) {
-    Rcpp::stop("value of '" + name + "' must be non-negative");
-  }
-}
-
-
-inline void check_positive_scalar(
-    double x,
-    const std::string& name
-) {
-  check_finite_scalar(x, name);
-
-  if (x <= 0.0) {
-    Rcpp::stop("value of '" + name + "' must be positive");
-  }
-}
-
-
-inline void check_matrix_finite(
-    const arma::mat& x,
-    const std::string& name
-) {
-  if (!x.is_finite()) {
-    Rcpp::stop("matrix '" + name + "' must contain only finite values");
-  }
-}
-
-
-inline void check_vector_finite(
-    const arma::vec& x,
-    const std::string& name
-) {
-  if (!x.is_finite()) {
-    Rcpp::stop("vector '" + name + "' must contain only finite values");
-  }
-}
-
-
-inline void check_vector_length(
-    const arma::vec& x,
-    arma::uword n,
-    const std::string& name
-) {
-  if (x.n_elem != n) {
-    Rcpp::stop("vector '" + name + "' has incompatible length");
-  }
-}
-
-
-inline void check_matrix_rows(
-    const arma::mat& x,
-    arma::uword n,
-    const std::string& name
-) {
-  if (x.n_rows != n) {
-    Rcpp::stop("matrix '" + name + "' has incompatible number of rows");
-  }
-}
-
+#include "util.h"
 
 inline void check_input_dimensions(
     const arma::mat& X,
@@ -149,6 +74,7 @@ struct EcountgmifsInputInternal
     w,
     offset,
     weight_vec,
+    weight_vec_has_prior(weight_vec),
 
     Xtest,
     ytest,
@@ -206,6 +132,7 @@ struct EcountgmifsInputInternal
     other.api.w,
     other.api.offset,
     other.api.weight_vec,
+    other.api.has_prior,
 
     other.api.Xtest,
     other.api.ytest,
@@ -232,6 +159,7 @@ struct EcountgmifsInputInternal
     other.api.w,
     other.api.offset,
     other.api.weight_vec,
+    other.api.has_prior,
 
     other.api.Xtest,
     other.api.ytest,
@@ -268,7 +196,8 @@ struct EcountgmifsInputInternal
       Rcpp::Named("q_test") = api.wtest.n_cols,
       Rcpp::Named("family") = static_cast<int>(api.family),
       Rcpp::Named("link_func") = static_cast<int>(api.link_func),
-      Rcpp::Named("enet_alpha") = api.enet_alpha
+      Rcpp::Named("enet_alpha") = api.enet_alpha,
+      Rcpp::Named("has_prior") = api.has_prior
     );
 
     if (include_data) {
@@ -394,10 +323,12 @@ struct EcountgmifsStateInternal
     std::numeric_limits<double>::infinity(), // negloglik
     0.0,   // saturated_dispersion
     std::numeric_limits<double>::infinity(), // saturated_negloglik
+    std::numeric_limits<double>::infinity(), // null_negloglik
     Rcpp::NumericVector(), // criteria
     0, // iteration
     epsilon_start,
-    false // initialized?
+    false, // initialized?
+    1.0 // pseudo r^2
   }
   {
     if (p == 0) {
@@ -437,7 +368,7 @@ struct EcountgmifsContextInternal
   std::vector<EcountgmifsState> states;
   EcountgmifsState previous_state;
   arma::uvec last_saved_active_set;
-
+  std::string message;
 
   EcountgmifsContext api;
 
@@ -457,6 +388,7 @@ struct EcountgmifsContextInternal
     ),
     states(),
     previous_state(),
+    message("not initialized"),
     api {
     input.api,
     control.api,
@@ -622,6 +554,40 @@ struct EcountgmifsContextInternal
     state.api.eta = nu_linear();
     state.api.mu = mu_mean_from_eta(state.api.eta);
     state.api.negloglik = negloglik_from_mu_mean(state.api.mu);
+    state.api.pseudo_r2 = pseudo_r2_from_negloglik();
+  }
+
+  void set_null_negloglik_from_current_state()
+  {
+    state.api.null_negloglik = state.api.negloglik;
+    refresh();
+  }
+
+  double pseudo_r2_from_negloglik()
+  {
+    if (!std::isfinite(state.api.null_negloglik) ||
+        !std::isfinite(state.api.negloglik) ||
+        !std::isfinite(state.api.saturated_negloglik)) {
+        return 0.0;
+    }
+
+    const double denominator =
+      state.api.null_negloglik - state.api.saturated_negloglik;
+
+    if (denominator <= 0.0 || !std::isfinite(denominator)) {
+      return 0.0;
+    }
+
+    const double numerator =
+      state.api.null_negloglik - state.api.negloglik;
+
+    return std::max(
+        0.0,
+        std::min(
+          1.0,
+          numerator / denominator
+        )
+      );
   }
 
   void set_theta(const arma::vec& theta_new)
@@ -719,6 +685,12 @@ struct EcountgmifsContextInternal
     }
 
     Rcpp::stop("unknown family");
+  }
+
+  void set_message(
+      const std::string& message_new
+  ) {
+    message = message_new;
   }
 
   void initialize_nonpen_start()
@@ -845,6 +817,7 @@ struct EcountgmifsContextInternal
     Rcpp::NumericVector saturated_dispersion(m);
     Rcpp::NumericVector saturated_negloglik(m);
     Rcpp::LogicalVector initialized(m);
+    Rcpp::NumericVector pseudo_r2(m);
 
     Rcpp::List beta(m);
     Rcpp::List theta(m);
@@ -873,6 +846,9 @@ struct EcountgmifsContextInternal
       saturated_negloglik[i] =
         state.saturated_negloglik;
 
+      pseudo_r2[i] =
+        state.pseudo_r2;
+
       initialized[i] =
         state.initialized;
 
@@ -896,6 +872,7 @@ struct EcountgmifsContextInternal
       Rcpp::Named("negloglik") = negloglik,
       Rcpp::Named("saturated_dispersion") = saturated_dispersion,
       Rcpp::Named("saturated_negloglik") = saturated_negloglik,
+      Rcpp::Named("pseudo_r2") = pseudo_r2,
       Rcpp::Named("initialized") = initialized,
       Rcpp::Named("beta") = beta,
       Rcpp::Named("theta") = theta,
@@ -909,6 +886,7 @@ struct EcountgmifsContextInternal
     return Rcpp::List::create(
       Rcpp::Named("input") = input.to_list(control.api.include_data),
       Rcpp::Named("control") = control.to_list(),
+      Rcpp::Named("message") = message,
       Rcpp::Named("states") = states_to_dynamic_tracking_list()
     );
   }

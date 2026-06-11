@@ -99,6 +99,7 @@ double ecountgmifs_call_context_criterion(
         w,
         offset,
         weight_vec,
+        false,
 
         Xtest,
         ytest,
@@ -165,11 +166,13 @@ double ecountgmifs_call_context_criterion(
         dispersion,
         negloglik,
         dispersion,
-        negloglik,
-        Rcpp::NumericVector(),
+        negloglik, // saturated
+        negloglik, // null
+        Rcpp::NumericVector(), // criteria
         iteration,
         epsilon,
-        initialized
+        initialized,
+        1.0
       };
 
       EcountgmifsContext ctx {

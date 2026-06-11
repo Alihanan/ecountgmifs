@@ -69,17 +69,17 @@
 #' @return A list of control parameters.
 #' @export
 ecountgmifs.control <- function(
-    iteration.max = 1000000,
+    iteration.max = 10000,
     epsilon.max = 0.01,
     epsilon.start = 1e-6,
     epsilon.min = .Machine$double.eps,
     tol = 1e-8,
     nlopt.optim.reltol = tol,
     loglik.reltol.cutoff = 0.25,
-    state.track.strategy = c("active.set.change",
-                                  "all.iteration",
-                                  "every.k.iteration",
-                                  "none"),
+    state.track.strategy = c("all.iteration",
+                             "active.set.change",
+                              "every.k.iteration",
+                              "none"),
     state.track.freq = 10
 
 ) {

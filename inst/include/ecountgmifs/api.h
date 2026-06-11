@@ -39,6 +39,7 @@ struct EcountgmifsInput {
   const arma::mat& w;
   const arma::vec& offset;
   const arma::vec& weight_vec;
+  bool has_prior;
 
   const arma::mat& Xtest;
   const arma::vec& ytest;
@@ -93,11 +94,15 @@ struct EcountgmifsState
   double saturated_dispersion;
   double saturated_negloglik;
 
+  double null_negloglik;
+
   Rcpp::NumericVector criteria;
 
   uint64_t iteration;
   double epsilon;
   bool initialized;
+
+  double pseudo_r2 = 1.0;
 };
 
 struct EcountgmifsContext {

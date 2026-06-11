@@ -5,14 +5,14 @@
 \title{Auxiliary control for extended count GMIFS fitting}
 \usage{
 ecountgmifs.control(
-  iteration.max = 1e+06,
+  iteration.max = 10000,
   epsilon.max = 0.01,
   epsilon.start = 1e-06,
   epsilon.min = .Machine$double.eps,
   tol = 1e-08,
   nlopt.optim.reltol = tol,
   loglik.reltol.cutoff = 0.25,
-  state.track.strategy = c("active.set.change", "all.iteration", "every.k.iteration",
+  state.track.strategy = c("all.iteration", "active.set.change", "every.k.iteration",
     "none"),
   state.track.freq = 10
 )

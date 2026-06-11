@@ -240,7 +240,7 @@ ecountgmifs <- function(
   print("here")
 
 
-  ecountgmifs_cpp(X = X,
+  out <- ecountgmifs_cpp(X = X,
                   y = y,
                   family = family.int,
                   linkfunc_int = link,
@@ -271,4 +271,7 @@ ecountgmifs <- function(
 
                   criteria = criteria
                   )
+
+  class(out) <- c("ecountgmifs", class(out))
+  out
 }

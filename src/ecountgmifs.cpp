@@ -139,7 +139,8 @@ Rcpp::List ecountgmifs_cpp(
     << ", saturated_dispersion="
     << ctx.state.api.saturated_dispersion
   );
-
+  ctx.set_null_negloglik_from_current_state();
+  ctx.set_message("running");
 
   Rcpp::List criteria_list;
 
@@ -159,67 +160,9 @@ Rcpp::List ecountgmifs_cpp(
   ctx.track_state(); // save last state regardless
 
   // #########################################################
-  //  Step X: Construct the final output list
+  //  Step 4: Construct the final output list
   // #########################################################
-  /*
-  Rcpp::List output =
-    Rcpp::List::create(
-      Rcpp::Named("model") = 123
-      //Rcpp::Named("model") = modelOutputList,
-      //Rcpp::Named("iterations") = step,
-      //Rcpp::Named("message") = converge_message,
-      //Rcpp::Named("tol") = tol,
-      //Rcpp::Named("epsilon") = epsilon,
-      //Rcpp::Named("max_iter") = max_iter,
-      //Rcpp::Named("family") = family,
-
-      // Rcpp::Named("L1_dynamic") = all_norms,
-      //
-      // //Rcpp::Named("beta_dynamic") = all_beta_list,
-      // Rcpp::Named("beta_dynamic") = all_beta01_list,
-
-      //Rcpp::Named("mut2_dynamic") = all_mut2_list,
-      //Rcpp::Named("dmu_dy_dynamic") = all_dmu_dy_list,
-      //Rcpp::Named("ddl_dy_dynamic") = all_ddl_dy_list,
-      //Rcpp::Named("ugrad_dynamic") = all_ugrad_list,
-      //Rcpp::Named("dgamma_dy_dynamic") = all_dgamma_dy_list,
-
-      // Rcpp::Named("alpha_dynamic") = all_alpha,
-      // Rcpp::Named("gamma_dynamic") = all_gamma,
-      // Rcpp::Named("loglik_dynamic") = all_loglik,
-      // Rcpp::Named("loglikorig_dynamic") = all_loglikorig,
-
-      //Rcpp::Named("testloglik_dynamic") = all_testloglik,
-      //Rcpp::Named("BIC_dynamic") = all_BICorig,
-      //Rcpp::Named("AIC_dynamic") = all_AICorig,
-      // Rcpp::Named("OLS_loglik") = OLS_loglik,
-      // Rcpp::Named("EDF_dynamic") = all_edf,
-      // Rcpp::Named("LOO_dynamic") = all_loo
-
-  //Rcpp::Named("X") = X,
-  //Rcpp::Named("y") = y//,
-  //Rcpp::Named("w") = w,
-  //Rcpp::Named("offset") = offset
-    );
-   */
-
-  Rcpp::List output =
-    Rcpp::List::create(
-      Rcpp::Named("model") = 123,
-      Rcpp::Named("beta") = ctx.state.api.beta,
-      Rcpp::Named("theta") = ctx.state.api.theta,
-      Rcpp::Named("dispersion") = ctx.state.api.dispersion,
-      Rcpp::Named("negloglik") = ctx.state.api.negloglik,
-      Rcpp::Named("dispersion.saturated") =
-        ctx.state.api.saturated_dispersion,
-      Rcpp::Named("negloglik.saturated") =
-        ctx.state.api.saturated_negloglik,
-      Rcpp::Named("iteration") = ctx.state.api.iteration,
-      Rcpp::Named("epsilon") = ctx.state.api.epsilon,
-      Rcpp::Named("initialized") = ctx.state.api.initialized,
-      Rcpp::Named("context") = ctx.to_list()
-    );
-
+  Rcpp::List output = ctx.to_list();
 
   return output;
 }
