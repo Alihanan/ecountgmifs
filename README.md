@@ -186,7 +186,7 @@ data(mrna97_rnaseq)
 
 j <- 1
 
-weights <- ifelse(mrna97_rnaseq$prior[j, ], 0.1, 1)
+weights <- ifelse(mrna97_rnaseq$prior[, j], 0.1, 1)
 
 fit_prior <- ecountgmifs(
   X = mrna97_rnaseq$X,
