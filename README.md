@@ -2,7 +2,7 @@
 
 `ecountgmifs` is an R package for fitting extended generalized monotone incremental forward stagewise models for high-dimensional count data.
 
-The package is designed for sparse regression problems where the response is count-valued and the number of predictors may be large relative to the number of samples. It supports negative-binomial and Poisson model families, elastic-net-style stagewise updates, prior-weighted penalties, unpenalized covariates, and information-criterion-based model selection along the solution path.
+The package is designed for sparse regression problems where the response is count-valued and the number of predictors may be large relative to the number of samples. It supports negative-binomial and Poisson model families, elastic-net-style stagewise updates, prior-weighted penalties, unpenalized covariates, offsets, and information-criterion-based model selection along the solution path.
 
 ## Installation
 
@@ -91,7 +91,6 @@ fit <- ecountgmifs(
 )
 ```
 
-
 ## Preprocessing utilities
 
 The package includes preprocessing helpers matching the normalization and transformation strategies used in the RNA-seq and airport experiments.
@@ -127,7 +126,7 @@ Available RNA-seq predictor transformations are:
 * `"standardize_log1p"`
 * `"standardize_asinh"`
 
-For negative-binomial models, the response should usually remain on the original count scale. When an offset is needed, request the normalization factor:
+For negative-binomial models, the response should usually remain on the original count scale. When a sample-level offset is needed, request the normalization factor and pass it to `ecountgmifs()`:
 
 ```r
 norm <- normalize_counts(
@@ -138,6 +137,13 @@ norm <- normalize_counts(
 
 X_cpm <- norm$x
 offset <- norm$offset
+
+fit_offset <- ecountgmifs(
+  X = X_cpm,
+  y = mrna97_rnaseq$Y[, 1],
+  offset = offset,
+  family = "negative.binomial"
+)
 ```
 
 For monthly airport passenger-flow matrices, temporal transformations can be applied to reduce seasonal and system-wide temporal effects:
@@ -179,14 +185,14 @@ fit_prior <- ecountgmifs(
 )
 ```
 
-For the packaged RNA-seq dataset, the prior matrix can be used to construct target-specific penalty weights:
+For the packaged RNA-seq dataset, the prior matrix can be used to construct target-specific penalty weights. Because `prior` has target-by-predictor orientation, use row `j` for target `j`:
 
 ```r
 data(mrna97_rnaseq)
 
 j <- 1
 
-weights <- ifelse(mrna97_rnaseq$prior[, j], 0.1, 1)
+weights <- ifelse(mrna97_rnaseq$prior[j, ], 0.1, 1)
 
 fit_prior <- ecountgmifs(
   X = mrna97_rnaseq$X,
@@ -199,7 +205,7 @@ fit_prior <- ecountgmifs(
 
 ## Model-selection criteria
 
-The package includes example utilities for compiling information-criterion functions used to select points along the fitted solution path.
+The package includes utilities for compiling and evaluating information-criterion functions used to select points along the fitted solution path.
 
 ```r
 bic_nnz <- BIC_nnz()
@@ -213,8 +219,23 @@ fit <- ecountgmifs(
     BIC_hedf = bic_hedf
   )
 )
+```
 
 The example criteria are compiled C++ functions. Repeated calls with the same source code are cached within the R session.
+
+The default `criteria` argument also accepts criterion constructors, compiled criterion objects, and character names:
+
+```r
+fit_default <- ecountgmifs(
+  X = X,
+  y = y,
+  criteria = list(
+    AIC_nnz = AIC_nnz,
+    BIC_nnz = BIC_nnz(),
+    SABIC_nnz = "SABIC_nnz"
+  )
+)
+```
 
 ## Main features
 
@@ -222,7 +243,7 @@ The example criteria are compiled C++ functions. Repeated calls with the same so
 * Negative-binomial and Poisson model families
 * Elastic-net mixing through `enet.alpha`
 * Optional prior-weighted penalty rescaling
-* Support for unpenalized covariates through `w`
+* Support for offsets and unpenalized covariates through `offset` and `w`
 * Information-criterion-based solution-path selection
 * Runtime-compilable custom C++ selection criteria with read-only context access
 * Public RNA-seq example dataset with prior and ground-truth interaction matrices
@@ -232,7 +253,7 @@ The example criteria are compiled C++ functions. Repeated calls with the same so
 
 This package accompanies the manuscript:
 
-**ecountGMIFS: Extended generalized monotone incremental forward stagewise regression for penalized negative binomial path-following modeling of high-dimensional count data**  
+**Extended generalized monotone incremental forward stagewise regression for penalized negative binomial path-following modeling of high-dimensional count data**
 Alikhan Anuarbekov and Jiří Kléma
 
 The packaged `mrna97_rnaseq` dataset is adapted from the RNA-seq and prior-knowledge setup described in:
