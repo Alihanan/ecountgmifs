@@ -263,6 +263,7 @@ ecountgmifs <- function(
 
                   nlopt_optim_reltol = control$nlopt.optim.reltol,
                   loglik_reltol_cutoff = control$loglik.reltol.cutoff,
+                  nb_poisson_fallback_eps = control$nb.poisson.fallback.eps,
                   is_fixed_disp = fixed.dispersion,
                   fixed_disp_value = fixed.dispersion.value,
                   include_data = include.data,

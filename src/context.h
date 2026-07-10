@@ -231,6 +231,7 @@ struct EcountgmifsControlInternal
     double tol,
     double nlopt_optim_reltol,
     double loglik_reltol_cutoff,
+    double nb_poisson_fallback_eps,
     bool fixed_dispersion,
     double fixed_dispersion_value,
     int state_track_strategy,
@@ -246,6 +247,7 @@ struct EcountgmifsControlInternal
     tol,
     nlopt_optim_reltol,
     loglik_reltol_cutoff,
+    nb_poisson_fallback_eps,
     fixed_dispersion,
     fixed_dispersion_value,
     as_track_strategy(state_track_strategy),
@@ -266,6 +268,10 @@ struct EcountgmifsControlInternal
     check_nonnegative_scalar(
       api.loglik_reltol_cutoff,
       "loglik_reltol_cutoff"
+    );
+    check_nonnegative_scalar(
+      api.nb_poisson_fallback_eps,
+      "nb_poisson_fallback_eps"
     );
 
     if (api.epsilon_start > api.epsilon_max) {
@@ -294,6 +300,8 @@ struct EcountgmifsControlInternal
       Rcpp::Named("tol") = api.tol,
       Rcpp::Named("nlopt_optim_reltol") = api.nlopt_optim_reltol,
       Rcpp::Named("loglik_reltol_cutoff") = api.loglik_reltol_cutoff,
+      Rcpp::Named("nb_poisson_fallback_eps") =
+        api.nb_poisson_fallback_eps,
       Rcpp::Named("fixed_dispersion") = api.fixed_dispersion,
       Rcpp::Named("fixed_dispersion_value") = api.fixed_dispersion_value,
       Rcpp::Named("state_track_strategy") =
@@ -366,9 +374,10 @@ struct EcountgmifsContextInternal
 
 
   std::vector<EcountgmifsState> states;
-  EcountgmifsState previous_state;
   arma::uvec last_saved_active_set;
   std::string message;
+  Rcpp::List criteria;
+  arma::vec work_n;
 
   EcountgmifsContext api;
 
@@ -387,8 +396,9 @@ struct EcountgmifsContextInternal
       control.api.epsilon_start
     ),
     states(),
-    previous_state(),
     message("not initialized"),
+    criteria(),
+    work_n(),
     api {
     input.api,
     control.api,
@@ -407,6 +417,8 @@ struct EcountgmifsContextInternal
       input.api.w.n_cols,
       control.api.epsilon_start
     ),
+    criteria(),
+    work_n(),
     api {
     input.api,
     control.api,
@@ -451,9 +463,72 @@ struct EcountgmifsContextInternal
     Rcpp::stop("unknown link function");
   }
 
+  void mu_mean_from_eta_inplace(
+      const arma::vec& eta,
+      arma::vec& mu
+  ) const {
+    if (mu.n_elem != eta.n_elem) {
+      mu.set_size(eta.n_elem);
+    }
+
+    switch (input.api.link_func) {
+    case LOG_LINK: {
+      for (arma::uword i = 0; i < eta.n_elem; ++i) {
+        const double eta_total =
+          clamp_scalar(
+            input.api.offset[i] + eta[i],
+            ETA_MIN_CAP,
+            ETA_MAX_CAP
+          );
+
+        const double mu_i =
+          std::exp(eta_total);
+
+        mu[i] =
+          clamp_scalar(
+            mu_i,
+            MU_MIN_CAP,
+            MU_MAX_CAP
+          );
+      }
+
+      return;
+    }
+
+    case SOFTPLUS_LINK: {
+      for (arma::uword i = 0; i < eta.n_elem; ++i) {
+        const double mu_i =
+          std::exp(input.api.offset[i]) *
+          softplus_scalar(eta[i]);
+
+        mu[i] =
+          clamp_scalar(
+            mu_i,
+            MU_MIN_CAP,
+            MU_MAX_CAP
+          );
+      }
+
+      return;
+    }
+    }
+
+    Rcpp::stop("unknown link function");
+  }
+
 
   double negloglik_from_mu_mean(
       const arma::vec& mu
+  ) const {
+    return negloglik_from_mu_dispersion(
+      mu,
+      state.api.dispersion
+    );
+  }
+
+  double negloglik_from_mu_dispersion(
+      const arma::vec& mu,
+      double dispersion
   ) const {
     switch (input.api.family) {
     case POISSON:
@@ -467,8 +542,9 @@ struct EcountgmifsContextInternal
       return nb_negloglik(
         mu,
         input.api.y,
-        state.api.dispersion,
-        input.api.train_y_one_lgamma
+        dispersion,
+        input.api.train_y_one_lgamma,
+        control.api.nb_poisson_fallback_eps
       );
     }
 
@@ -498,19 +574,20 @@ struct EcountgmifsContextInternal
     return arma::all(a == b);
   }
 
-  bool active_set_changed_from_previous_state() const
+  bool active_set_changed_from_last_saved_state() const
   {
     if (state.api.iteration == 0) {
       return false;
     }
 
-    const arma::uvec previous =
-      active_set_from_beta(previous_state.beta);
-
     const arma::uvec current =
       active_set_from_beta(state.api.beta);
 
-    return !active_sets_equal(previous, current);
+    if (last_saved_active_set.n_elem == 0) {
+      return true;
+    }
+
+    return !active_sets_equal(last_saved_active_set, current);
   }
 
   bool should_track_state()
@@ -530,7 +607,7 @@ struct EcountgmifsContextInternal
           state.api.iteration % control.api.state_track_freq == 0);
 
     case ACTIVE_SET_CHANGE:
-      return active_set_changed_from_previous_state();
+      return active_set_changed_from_last_saved_state();
     }
 
     Rcpp::stop("unknown state tracking strategy");
@@ -540,21 +617,138 @@ struct EcountgmifsContextInternal
     states.push_back(state.api);
   }
 
-  void update_tracking()
-  {
-    if (should_track_state()) {
-      track_state();
+  void set_criteria(
+      const Rcpp::List& criteria_new
+  ) {
+    criteria = criteria_new;
+  }
+
+  void evaluate_criteria() {
+    const R_xlen_t m = criteria.size();
+
+    Rcpp::NumericVector values(m);
+    Rcpp::CharacterVector value_names(m);
+
+    Rcpp::CharacterVector list_names;
+    const bool has_list_names =
+      criteria.hasAttribute("names") &&
+      Rf_length(criteria.attr("names")) == m;
+
+    if (has_list_names) {
+      list_names = Rcpp::CharacterVector(criteria.attr("names"));
     }
 
-    previous_state = state.api;
+    for (R_xlen_t i = 0; i < m; ++i) {
+      Rcpp::List criterion_obj(criteria[i]);
+
+      if (!criterion_obj.containsElementNamed("pointer")) {
+        Rcpp::stop("criterion object is missing field 'pointer'");
+      }
+
+      SEXP criterion_ptr = criterion_obj["pointer"];
+      void* address = R_ExternalPtrAddr(criterion_ptr);
+
+      if (address == nullptr) {
+        Rcpp::stop("criterion pointer is null");
+      }
+
+      criterion_fun_t criterion =
+        reinterpret_cast<criterion_fun_t>(address);
+
+      values[i] = criterion(&api);
+
+      if (has_list_names &&
+          STRING_ELT(list_names, i) != NA_STRING &&
+          CHAR(STRING_ELT(list_names, i))[0] != '\0') {
+        value_names[i] = STRING_ELT(list_names, i);
+      } else if (criterion_obj.containsElementNamed("name")) {
+        value_names[i] = Rcpp::as<std::string>(criterion_obj["name"]);
+      }
+    }
+
+    values.attr("names") = value_names;
+    state.api.criteria = values;
+  }
+
+  void update_tracking()
+  {
+    const bool save_state =
+      should_track_state();
+
+    if (save_state) {
+      track_state();
+
+      if (control.api.state_track_strategy == ACTIVE_SET_CHANGE) {
+        last_saved_active_set =
+          active_set_from_beta(state.api.beta);
+      }
+    }
+  }
+
+  void ensure_state_vectors()
+  {
+    const arma::uword n = input.api.X.n_rows;
+
+    if (state.api.eta.n_elem != n) {
+      state.api.eta.set_size(n);
+    }
+
+    if (state.api.mu.n_elem != n) {
+      state.api.mu.set_size(n);
+    }
+
+    if (work_n.n_elem != n) {
+      work_n.set_size(n);
+    }
+  }
+
+  void refresh_eta_inplace()
+  {
+    ensure_state_vectors();
+
+    state.api.eta = input.api.w * state.api.theta;
+    work_n = input.api.X * state.api.beta;
+    state.api.eta += work_n;
+  }
+
+  void refresh_mu_inplace()
+  {
+    ensure_state_vectors();
+    mu_mean_from_eta_inplace(
+      state.api.eta,
+      state.api.mu
+    );
+  }
+
+  void refresh_negloglik_from_mu()
+  {
+    state.api.negloglik =
+      negloglik_from_mu_mean(state.api.mu);
+  }
+
+  void refresh_pseudo_r2()
+  {
+    state.api.pseudo_r2 =
+      pseudo_r2_from_negloglik();
   }
 
   void refresh()
   {
-    state.api.eta = nu_linear();
-    state.api.mu = mu_mean_from_eta(state.api.eta);
-    state.api.negloglik = negloglik_from_mu_mean(state.api.mu);
-    state.api.pseudo_r2 = pseudo_r2_from_negloglik();
+    refresh_eta_inplace();
+    refresh_mu_inplace();
+    refresh_negloglik_from_mu();
+    refresh_pseudo_r2();
+  }
+
+  void refresh_after_dispersion_change()
+  {
+    if (state.api.mu.n_elem != input.api.X.n_rows) {
+      refresh();
+      return;
+    }
+
+    refresh_negloglik_from_mu();
+    refresh_pseudo_r2();
   }
 
   void set_null_negloglik_from_current_state()
@@ -606,6 +800,37 @@ struct EcountgmifsContextInternal
     state.api.beta = beta_new;
     refresh();
   }
+
+  void commit_beta_trial(
+      arma::vec&& beta_new,
+      arma::vec&& eta_new,
+      arma::vec&& mu_new,
+      double negloglik_new
+  ) {
+    if (beta_new.n_elem != state.api.beta.n_elem) {
+      Rcpp::stop("commit_beta_trial(): incompatible beta size");
+    }
+
+    if (eta_new.n_elem != input.api.X.n_rows ||
+        mu_new.n_elem != input.api.X.n_rows) {
+      Rcpp::stop("commit_beta_trial(): incompatible eta/mu size");
+    }
+
+    state.api.beta =
+      std::move(beta_new);
+
+    state.api.eta =
+      std::move(eta_new);
+
+    state.api.mu =
+      std::move(mu_new);
+
+    state.api.negloglik =
+      negloglik_new;
+
+    refresh_pseudo_r2();
+  }
+
   void set_theta_beta(
       const arma::vec& theta_new,
       const arma::vec& beta_new
@@ -635,7 +860,7 @@ struct EcountgmifsContextInternal
     }
 
     state.api.dispersion = dispersion_new;
-    refresh();
+    refresh_after_dispersion_change();
   }
 
 
@@ -680,7 +905,8 @@ struct EcountgmifsContextInternal
         mu_saturated,
         input.api.y,
         dispersion,
-        input.api.train_y_one_lgamma
+        input.api.train_y_one_lgamma,
+        control.api.nb_poisson_fallback_eps
       );
     }
 
@@ -785,6 +1011,11 @@ struct EcountgmifsContextInternal
     input(std::move(other.input)),
     control(std::move(other.control)),
     state(std::move(other.state)),
+    states(std::move(other.states)),
+    last_saved_active_set(std::move(other.last_saved_active_set)),
+    message(std::move(other.message)),
+    criteria(std::move(other.criteria)),
+    work_n(std::move(other.work_n)),
     api {
     input.api,
     control.api,
@@ -823,6 +1054,7 @@ struct EcountgmifsContextInternal
     Rcpp::List theta(m);
     Rcpp::List eta(m);
     Rcpp::List mu(m);
+    Rcpp::List criteria;
 
     for (R_xlen_t i = 0; i < m; ++i) {
       const EcountgmifsState& state =
@@ -865,6 +1097,62 @@ struct EcountgmifsContextInternal
         state.mu;
     }
 
+    Rcpp::CharacterVector criterion_names;
+
+    for (R_xlen_t i = 0; i < m; ++i) {
+      const EcountgmifsState& state =
+        states[static_cast<std::size_t>(i)];
+
+      if (state.criteria.size() == 0) {
+        continue;
+      }
+
+      if (state.criteria.hasAttribute("names")) {
+        criterion_names =
+          Rcpp::CharacterVector(state.criteria.attr("names"));
+      }
+
+      break;
+    }
+
+    const R_xlen_t n_criteria =
+      criterion_names.size();
+
+    criteria =
+      Rcpp::List(n_criteria);
+
+    Rcpp::CharacterVector state_names(m);
+
+    for (R_xlen_t i = 0; i < m; ++i) {
+      state_names[i] =
+        "state_" + std::to_string(i);
+    }
+
+    for (R_xlen_t j = 0; j < n_criteria; ++j) {
+      Rcpp::NumericVector criterion_values(m, NA_REAL);
+
+      criterion_values.attr("names") =
+        state_names;
+
+      for (R_xlen_t i = 0; i < m; ++i) {
+        const EcountgmifsState& state =
+          states[static_cast<std::size_t>(i)];
+
+        if (state.criteria.size() <= j) {
+          continue;
+        }
+
+        criterion_values[i] =
+          state.criteria[j];
+      }
+
+      criteria[j] =
+        criterion_values;
+    }
+
+    criteria.attr("names") =
+      criterion_names;
+
     return Rcpp::List::create(
       Rcpp::Named("iteration") = iteration,
       Rcpp::Named("epsilon") = epsilon,
@@ -877,7 +1165,8 @@ struct EcountgmifsContextInternal
       Rcpp::Named("beta") = beta,
       Rcpp::Named("theta") = theta,
       Rcpp::Named("eta") = eta,
-      Rcpp::Named("mu") = mu
+      Rcpp::Named("mu") = mu,
+      Rcpp::Named("criteria") = criteria
     );
   }
 
@@ -918,6 +1207,7 @@ inline EcountgmifsContextInternal make_context(
 
     double nlopt_optim_reltol,
     double loglik_reltol_cutoff,
+    double nb_poisson_fallback_eps,
     bool verbose,
     bool fixed_dispersion,
     double fixed_dispersion_value,
@@ -949,6 +1239,7 @@ inline EcountgmifsContextInternal make_context(
       tol,
       nlopt_optim_reltol,
       loglik_reltol_cutoff,
+      nb_poisson_fallback_eps,
       fixed_dispersion,
       fixed_dispersion_value,
       state_track_strategy,

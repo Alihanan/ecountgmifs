@@ -72,6 +72,7 @@ struct EcountgmifsControl {
   double tol;
   double nlopt_optim_reltol;
   double loglik_reltol_cutoff;
+  double nb_poisson_fallback_eps;
   bool fixed_dispersion;
   double fixed_dispersion_value;
   EnumStateTrackStrategy state_track_strategy;

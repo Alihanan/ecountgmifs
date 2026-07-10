@@ -64,6 +64,9 @@
 #'   log-likelihood cutoff used by stopping or model-selection rules comparing
 #'   the fitted path to a reference log-likelihood. This quantity corresponds
 #'   to the pseudo-\eqn{R^2} threshold used in the accompanying research paper.
+#' @param nb.poisson.fallback.eps numeric. Non-negative dispersion threshold
+#'   below which the negative-binomial likelihood is evaluated using the
+#'   Poisson likelihood for numerical stability.
 #'
 #'
 #' @return A list of control parameters.
@@ -76,6 +79,7 @@ ecountgmifs.control <- function(
     tol = 1e-8,
     nlopt.optim.reltol = tol,
     loglik.reltol.cutoff = 0.25,
+    nb.poisson.fallback.eps = 1e-8,
     state.track.strategy = c("all.iteration",
                              "active.set.change",
                               "every.k.iteration",
@@ -151,6 +155,13 @@ ecountgmifs.control <- function(
     stop("value of 'loglik.reltol.cutoff' must be >= 0")
   }
 
+  if (!is.numeric(nb.poisson.fallback.eps) ||
+      length(nb.poisson.fallback.eps) != 1L ||
+      is.na(nb.poisson.fallback.eps) ||
+      nb.poisson.fallback.eps < 0) {
+    stop("value of 'nb.poisson.fallback.eps' must be a non-negative number")
+  }
+
   list(
     state.track.strategy = state.track.strategy,
     state.track.freq = as.integer(state.track.freq),
@@ -160,6 +171,7 @@ ecountgmifs.control <- function(
     epsilon.min = epsilon.min,
     tol = tol,
     nlopt.optim.reltol = nlopt.optim.reltol,
-    loglik.reltol.cutoff = loglik.reltol.cutoff
+    loglik.reltol.cutoff = loglik.reltol.cutoff,
+    nb.poisson.fallback.eps = nb.poisson.fallback.eps
   )
 }

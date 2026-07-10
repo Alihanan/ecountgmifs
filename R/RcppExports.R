@@ -5,7 +5,7 @@ ecountgmifs_call_context_criterion <- function(criterion_ptr, negloglik = 100.0,
     .Call(`_ecountgmifs_ecountgmifs_call_context_criterion`, criterion_ptr, negloglik, iteration, dispersion, epsilon, initialized, n, p, q, beta_value, beta_nonzero_value, nnz, enet_alpha, include_data)
 }
 
-ecountgmifs_cpp <- function(X, y, w, offset, yorig, Xtest, ytest, wtest, offsettest, weight_vec, enet_alpha, epsilon_start, epsilon_max, epsilon_min_tol, tol, iteration_max, family, linkfunc_int, nlopt_optim_reltol, loglik_reltol_cutoff, verbose = FALSE, is_fixed_disp = FALSE, fixed_disp_value = 0.0, include_data = FALSE, state_track_strategy = 0L, state_track_freq = 1L, criteria = NULL) {
-    .Call(`_ecountgmifs_ecountgmifs_cpp`, X, y, w, offset, yorig, Xtest, ytest, wtest, offsettest, weight_vec, enet_alpha, epsilon_start, epsilon_max, epsilon_min_tol, tol, iteration_max, family, linkfunc_int, nlopt_optim_reltol, loglik_reltol_cutoff, verbose, is_fixed_disp, fixed_disp_value, include_data, state_track_strategy, state_track_freq, criteria)
+ecountgmifs_cpp <- function(X, y, w, offset, yorig, Xtest, ytest, wtest, offsettest, weight_vec, enet_alpha, epsilon_start, epsilon_max, epsilon_min_tol, tol, iteration_max, family, linkfunc_int, nlopt_optim_reltol, loglik_reltol_cutoff, nb_poisson_fallback_eps, verbose = FALSE, is_fixed_disp = FALSE, fixed_disp_value = 0.0, include_data = FALSE, state_track_strategy = 0L, state_track_freq = 1L, criteria = NULL) {
+    .Call(`_ecountgmifs_ecountgmifs_cpp`, X, y, w, offset, yorig, Xtest, ytest, wtest, offsettest, weight_vec, enet_alpha, epsilon_start, epsilon_max, epsilon_min_tol, tol, iteration_max, family, linkfunc_int, nlopt_optim_reltol, loglik_reltol_cutoff, nb_poisson_fallback_eps, verbose, is_fixed_disp, fixed_disp_value, include_data, state_track_strategy, state_track_freq, criteria)
 }
 

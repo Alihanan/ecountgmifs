@@ -46,6 +46,7 @@ Rcpp::List ecountgmifs_cpp(
 
     double nlopt_optim_reltol,
     double loglik_reltol_cutoff,
+    double nb_poisson_fallback_eps,
     bool verbose = false,
     bool is_fixed_disp = false,
     double fixed_disp_value = 0.0,
@@ -96,6 +97,7 @@ Rcpp::List ecountgmifs_cpp(
     linkfunc_int,
     nlopt_optim_reltol,
     loglik_reltol_cutoff,
+    nb_poisson_fallback_eps,
     verbose,
     is_fixed_disp,
     fixed_disp_value,
@@ -150,6 +152,9 @@ Rcpp::List ecountgmifs_cpp(
     criteria_list = Rcpp::List(criteria);
   }
 
+  ctx.set_criteria(criteria_list);
+  ctx.evaluate_criteria();
+
   // #########################################################
   //  Step 3: Run the main Forward-Stagewise loop
   // #########################################################
@@ -157,14 +162,14 @@ Rcpp::List ecountgmifs_cpp(
 
   fit_stagewise_path(ctx, opt);
 
+  ctx.evaluate_criteria();
   ctx.track_state(); // save last state regardless
 
   // #########################################################
   //  Step 4: Construct the final output list
   // #########################################################
   Rcpp::List output = ctx.to_list();
+  output["criteria"] = ctx.state.api.criteria;
 
   return output;
 }
-
-

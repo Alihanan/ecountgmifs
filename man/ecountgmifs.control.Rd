@@ -12,6 +12,7 @@ ecountgmifs.control(
   tol = 1e-08,
   nlopt.optim.reltol = tol,
   loglik.reltol.cutoff = 0.25,
+  nb.poisson.fallback.eps = 1e-08,
   state.track.strategy = c("all.iteration", "active.set.change", "every.k.iteration",
     "none"),
   state.track.freq = 10
@@ -35,6 +36,10 @@ performed using the \emph{NLopt} library through \link[nloptr]{nloptr}.}
 log-likelihood cutoff used by stopping or model-selection rules comparing
 the fitted path to a reference log-likelihood. This quantity corresponds
 to the pseudo-\eqn{R^2} threshold used in the accompanying research paper.}
+
+\item{nb.poisson.fallback.eps}{numeric. Non-negative dispersion threshold
+below which the negative-binomial likelihood is evaluated using the
+Poisson likelihood for numerical stability.}
 
 \item{state.track.strategy}{character. Strategy used to track the algorithm
 state along the stagewise path. The tracked state may include quantities

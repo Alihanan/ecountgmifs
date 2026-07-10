@@ -6,13 +6,21 @@
 
 #include "context.h"
 #include "../inst/include/ecountgmifs/api.h"
+#include "numerical_internal_constants.h"
 
 inline double poisson_negloglik(
     const arma::vec& mu,
     const arma::vec& y,
     const arma::vec& y_one_lgamma
 ) {
-  arma::vec logp = y % arma::log(mu) - mu + y_one_lgamma;
+  arma::vec mu_safe =
+    arma::clamp(mu, MU_MIN_CAP, MU_MAX_CAP);
+
+  arma::vec logp =
+    y % arma::log(mu_safe) -
+    mu_safe +
+    y_one_lgamma;
+
   return -arma::accu(logp);
 }
 
@@ -20,8 +28,20 @@ inline double nb_negloglik(
     const arma::vec& mu,
     const arma::vec& y,
     double dispersion,
-    const arma::vec& y_one_lgamma
+    const arma::vec& y_one_lgamma,
+    double poisson_fallback_eps
 ) {
+  arma::vec mu_safe =
+    arma::clamp(mu, MU_MIN_CAP, MU_MAX_CAP);
+
+  if (dispersion <= poisson_fallback_eps) {
+    return poisson_negloglik(
+      mu_safe,
+      y,
+      y_one_lgamma
+    );
+  }
+
   if (dispersion <= 0.0) {
     return std::numeric_limits<double>::infinity();
   }
@@ -29,7 +49,7 @@ inline double nb_negloglik(
   const double a = dispersion;
   const double one_over_a = 1.0 / a;
 
-  arma::vec a_mu = a * mu;
+  arma::vec a_mu = a * mu_safe;
   arma::vec log_a_mu = arma::log(a_mu);
   arma::vec log_one_plus_a_mu = arma::log1p(a_mu);
 
@@ -61,7 +81,8 @@ inline double negloglik(
       mu,
       ctx.input.y,
       dispersion,
-      ctx.input.train_y_one_lgamma
+      ctx.input.train_y_one_lgamma,
+      ctx.control.nb_poisson_fallback_eps
     );
   }
 

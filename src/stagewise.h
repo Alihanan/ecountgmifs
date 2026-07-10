@@ -3,12 +3,17 @@
 #include <RcppArmadillo.h>
 
 #include <cmath>
+#include <iomanip>
 #include <limits>
+#include <string>
+#include <utility>
 
 #include "context.h"
 #include "nlopt_optim_nonpen.h"
 #include "enet.h"
 #include "numerical_internal_constants.h"
+
+#include <chrono> // todo delete
 
 /*
  * Main stagewise path loop.
@@ -46,6 +51,125 @@ inline bool step_is_zero(
   return arma::norm(step, 2) <= tol;
 }
 
+inline const char* ecountgmifs_delta_status(
+    double delta
+) {
+  if (delta < 0.0) {
+    return "improved";
+  }
+
+  if (delta > 0.0) {
+    return "worsened";
+  }
+
+  return "unchanged";
+}
+
+inline arma::uword ecountgmifs_active_beta_count(
+    const arma::vec& beta,
+    double tol
+) {
+  return arma::accu(arma::abs(beta) > tol);
+}
+
+inline void ecountgmifs_print_iteration_header(
+    uint64_t iteration
+) {
+  Rcpp::Rcout
+  << "[ecountgmifs] ############################################################\n"
+  << "[ecountgmifs] # stagewise iter " << iteration << "\n"
+  << "[ecountgmifs] ############################################################\n";
+}
+
+inline void ecountgmifs_print_section_header(
+    const char* section
+) {
+  Rcpp::Rcout
+  << "[ecountgmifs] ------------------------------------------------------------\n"
+  << "[ecountgmifs] " << section << "\n"
+  << "[ecountgmifs] ------------------------------------------------------------\n";
+}
+
+inline void ecountgmifs_print_stop_header(
+    const char* message
+) {
+  Rcpp::Rcout
+  << "[ecountgmifs] ############################################################\n"
+  << "[ecountgmifs] # stop: " << message << "\n"
+  << "[ecountgmifs] ############################################################\n";
+}
+
+inline void ecountgmifs_print_blank_line()
+{
+  Rcpp::Rcout << "\n";
+}
+
+template <typename T>
+inline void ecountgmifs_verbose_field(
+    const char* name,
+    const T& value
+) {
+  Rcpp::Rcout
+  << "[ecountgmifs]   "
+  << std::left << std::setw(16) << name
+  << "= " << value << std::right << "\n";
+}
+
+inline void ecountgmifs_verbose_delta(
+    const char* name,
+    double old_value,
+    double new_value
+) {
+  const double delta =
+    new_value - old_value;
+
+  Rcpp::Rcout
+  << "[ecountgmifs]   "
+  << std::left << std::setw(16) << name
+  << "= " << old_value << " -> " << new_value << std::right << "\n";
+
+  Rcpp::Rcout
+  << "[ecountgmifs]   "
+  << std::left << std::setw(16) << "delta"
+  << "= " << delta << " " << ecountgmifs_delta_status(delta)
+  << std::right << "\n";
+}
+
+inline void ecountgmifs_verbose_stop(
+    const EcountgmifsContextInternal& ctx,
+    const char* message
+) {
+  if (!ctx.control.api.verbose) {
+    return;
+  }
+
+  ecountgmifs_print_stop_header(message);
+
+  ecountgmifs_verbose_field(
+    "iteration",
+    ctx.state.api.iteration
+  );
+  ecountgmifs_verbose_field(
+    "negloglik",
+    ctx.state.api.negloglik
+  );
+  ecountgmifs_verbose_field(
+    "pseudo_r2",
+    ctx.state.api.pseudo_r2
+  );
+  ecountgmifs_verbose_field(
+    "epsilon",
+    ctx.state.api.epsilon
+  );
+  ecountgmifs_verbose_field(
+    "active_beta",
+    ecountgmifs_active_beta_count(
+      ctx.state.api.beta,
+      ctx.control.api.tol
+    )
+  );
+}
+
 inline arma::vec compute_beta_step(
     EcountgmifsContextInternal& ctx,
     const arma::vec& grad_beta,
@@ -63,12 +187,59 @@ inline arma::vec compute_beta_step(
   );
 }
 
+struct BetaTrialWorkspace
+{
+  arma::vec beta_candidate;
+  arma::vec fixed_wtheta;
+  arma::vec eta_work;
+  arma::vec mu_work;
+
+  explicit BetaTrialWorkspace(
+      const EcountgmifsContextInternal& ctx
+  ) :
+    beta_candidate(ctx.state.api.beta.n_elem),
+    fixed_wtheta(ctx.input.api.w * ctx.state.api.theta),
+    eta_work(ctx.input.api.X.n_rows),
+    mu_work(ctx.input.api.X.n_rows)
+  {}
+};
+
+inline double evaluate_beta_trial_negloglik(
+    EcountgmifsContextInternal& ctx,
+    const arma::vec& beta_old,
+    const arma::vec& beta_step,
+    BetaTrialWorkspace& workspace
+) {
+  workspace.beta_candidate =
+    beta_old;
+
+  workspace.beta_candidate +=
+    beta_step;
+
+  workspace.eta_work =
+    ctx.input.api.X * workspace.beta_candidate;
+
+  workspace.eta_work +=
+    workspace.fixed_wtheta;
+
+  ctx.mu_mean_from_eta_inplace(
+    workspace.eta_work,
+    workspace.mu_work
+  );
+
+  return ctx.negloglik_from_mu_dispersion(
+    workspace.mu_work,
+    ctx.state.api.dispersion
+  );
+}
+
 inline bool try_beta_step_with_halving(
     EcountgmifsContextInternal& ctx,
     const arma::vec& beta_old,
     const arma::vec& grad_beta,
     double negloglik_old,
-    arma::vec& beta_step_out
+    arma::vec& beta_step_out,
+    uint64_t& halvings_out
 ) {
   /*
    * glmSS-style:
@@ -87,9 +258,11 @@ inline bool try_beta_step_with_halving(
       ctx.state.api.epsilon * 2.0
     );
 
+  halvings_out = 0;
+  BetaTrialWorkspace workspace(ctx);
+
   while (true) {
     if (ctx.state.api.epsilon <= ctx.control.api.epsilon_min) {
-      ctx.set_beta(beta_old);
       beta_step_out.zeros(beta_old.n_elem);
       return false;
     }
@@ -102,36 +275,51 @@ inline bool try_beta_step_with_halving(
       );
 
     if (step_is_zero(beta_step, ctx.control.api.epsilon_min)) {
-      ctx.set_beta(beta_old);
       beta_step_out = beta_step;
       return false;
     }
 
-    ctx.set_beta(beta_old + beta_step);
+    const double trial_negloglik =
+      evaluate_beta_trial_negloglik(
+        ctx,
+        beta_old,
+        beta_step,
+        workspace
+      );
 
     /*
-     * After ctx.set_beta(), ctx.state.api.negloglik is beta-only updated,
-     * with theta and dispersion still fixed.
+     * The trial objective is beta-only updated, with theta and dispersion
+     * still fixed. The accepted state is not mutated until acceptance.
      *
      * Accept if the beta step does not worsen the minimized objective.
      */
-    if (ctx.state.api.negloglik <= negloglik_old) {
+    if (trial_negloglik <= negloglik_old) {
       beta_step_out = beta_step;
+      ctx.commit_beta_trial(
+        std::move(workspace.beta_candidate),
+        std::move(workspace.eta_work),
+        std::move(workspace.mu_work),
+        trial_negloglik
+      );
       return true;
     }
 
     ctx.state.api.epsilon *= 0.5;
+    ++halvings_out;
 
     if (ctx.control.api.verbose) {
+      const double delta =
+        trial_negloglik - negloglik_old;
+
       Rcpp::Rcout
-      << "stagewise halving: beta step worsened negloglik"
-      << ", new epsilon = " << ctx.state.api.epsilon
-      << ", old negloglik = " << negloglik_old
-      << ", trial negloglik = " << ctx.state.api.negloglik
+      << "[ecountgmifs]   halving " << halvings_out
+      << ": epsilon=" << ctx.state.api.epsilon
+      << ", negloglik=" << negloglik_old
+      << " -> " << trial_negloglik
+      << ", delta=" << delta
+      << " " << ecountgmifs_delta_status(delta)
       << "\n";
     }
-
-    ctx.set_beta(beta_old);
   }
 }
 
@@ -154,12 +342,22 @@ inline void fit_stagewise_path(
        iter < ctx.control.api.iteration_max;
        ++iter) {
 
+    auto t = std::chrono::steady_clock::now();
+
     ctx.state.api.iteration = iter + 1;
 
     const arma::vec beta_old = ctx.state.api.beta;
     const arma::vec theta_old = ctx.state.api.theta;
     const double dispersion_old = ctx.state.api.dispersion;
     const double negloglik_old = ctx.state.api.negloglik;
+    const double pseudo_r2_old = ctx.state.api.pseudo_r2;
+    const arma::uword active_beta_old =
+      ecountgmifs_active_beta_count(
+        beta_old,
+        ctx.control.api.tol
+      );
+    const double theta_norm_old =
+      arma::norm(theta_old, 2);
 
     arma::vec grad_beta =
       gradient_beta(
@@ -173,10 +371,58 @@ inline void fit_stagewise_path(
         ctx.state.api.dispersion
       );
 
+    arma::vec weighted_grad =
+      arma::abs(grad_beta) / ctx.input.api.weight_vec;
+
+    arma::uword max_grad_j = 0;
+    double max_grad = 0.0;
+    double max_grad_weighted = 0.0;
+
+    if (weighted_grad.n_elem > 0) {
+      max_grad_j = weighted_grad.index_max();
+      max_grad = grad_beta[max_grad_j];
+      max_grad_weighted = weighted_grad[max_grad_j];
+    }
+
+    if (ctx.control.api.verbose) {
+      ecountgmifs_print_iteration_header(
+        ctx.state.api.iteration
+      );
+      ecountgmifs_print_section_header(
+        "start"
+      );
+      ecountgmifs_verbose_field(
+        "negloglik",
+        negloglik_old
+      );
+      ecountgmifs_verbose_field(
+        "pseudo_r2",
+        pseudo_r2_old
+      );
+      ecountgmifs_verbose_field(
+        "epsilon",
+        ctx.state.api.epsilon
+      );
+      ecountgmifs_verbose_field(
+        "active_beta",
+        active_beta_old
+      );
+      ecountgmifs_verbose_field(
+        "dispersion",
+        dispersion_old
+      );
+      ecountgmifs_verbose_field(
+        "theta_norm",
+        theta_norm_old
+      );
+    }
+
     arma::vec beta_step(
         beta_old.n_elem,
         arma::fill::zeros
     );
+
+    uint64_t beta_halvings = 0;
 
     const bool beta_step_accepted =
       try_beta_step_with_halving(
@@ -184,27 +430,132 @@ inline void fit_stagewise_path(
         beta_old,
         grad_beta,
         negloglik_old,
-        beta_step
+        beta_step,
+        beta_halvings
       );
 
     if (!beta_step_accepted) {
-      if (ctx.control.api.verbose) {
-        Rcpp::Rcout
-        << "stagewise path stopped: beta step below epsilon_min "
-        << "or no acceptable beta step at iteration "
-        << ctx.state.api.iteration
-        << "\n";
-      }
+      ecountgmifs_verbose_stop(
+        ctx,
+        "beta_converged"
+      );
 
       return;
     }
+
+    const double negloglik_after_beta =
+      ctx.state.api.negloglik;
+
+    const arma::uword active_beta_after_beta =
+      ecountgmifs_active_beta_count(
+        ctx.state.api.beta,
+        ctx.control.api.tol
+      );
+
+    if (ctx.control.api.verbose) {
+      ecountgmifs_print_blank_line();
+      ecountgmifs_print_section_header(
+        "beta step"
+      );
+      ecountgmifs_verbose_field(
+        "epsilon",
+        ctx.state.api.epsilon
+      );
+      ecountgmifs_verbose_field(
+        "halvings",
+        beta_halvings
+      );
+      ecountgmifs_verbose_field(
+        "step_l2",
+        arma::norm(beta_step, 2)
+      );
+      ecountgmifs_verbose_field(
+        "step_l1",
+        arma::norm(beta_step, 1)
+      );
+      Rcpp::Rcout
+      << "[ecountgmifs]   "
+      << std::left << std::setw(16) << "active_beta"
+      << "= " << active_beta_old
+      << " -> " << active_beta_after_beta
+      << std::right << "\n";
+      ecountgmifs_verbose_delta(
+        "negloglik",
+        negloglik_old,
+        negloglik_after_beta
+      );
+      ecountgmifs_verbose_field(
+        "max_grad_j",
+        max_grad_j + 1
+      );
+      ecountgmifs_verbose_field(
+        "max_grad",
+        max_grad
+      );
+      ecountgmifs_verbose_field(
+        "max_grad/weight",
+        max_grad_weighted
+      );
+    }
+
     /*
      * Refit nonpenalized part conditional on new beta.
      * These optimizers commit their returned best values via ctx.set_theta()
      * and ctx.set_dispersion().
      */
     opt.optimize_theta(ctx);
+
+    const double negloglik_after_theta =
+      ctx.state.api.negloglik;
+
+    if (ctx.control.api.verbose) {
+      ecountgmifs_print_blank_line();
+      ecountgmifs_print_section_header(
+        "theta refit"
+      );
+      ecountgmifs_verbose_field(
+        "theta_diff",
+        arma::norm(ctx.state.api.theta - theta_old, 2)
+      );
+      ecountgmifs_verbose_field(
+        "theta_norm",
+        arma::norm(ctx.state.api.theta, 2)
+      );
+      ecountgmifs_verbose_delta(
+        "negloglik",
+        negloglik_after_beta,
+        negloglik_after_theta
+      );
+    }
+
     opt.optimize_dispersion(ctx);
+
+    const double negloglik_after_dispersion =
+      ctx.state.api.negloglik;
+
+    if (ctx.control.api.verbose) {
+      ecountgmifs_print_blank_line();
+      ecountgmifs_print_section_header(
+        "dispersion refit"
+      );
+      Rcpp::Rcout
+      << "[ecountgmifs]   "
+      << std::left << std::setw(16) << "dispersion"
+      << "= " << dispersion_old
+      << " -> " << ctx.state.api.dispersion
+      << std::right << "\n";
+      ecountgmifs_verbose_field(
+        "dispersion_diff",
+        std::abs(ctx.state.api.dispersion - dispersion_old)
+      );
+      ecountgmifs_verbose_delta(
+        "negloglik",
+        negloglik_after_theta,
+        negloglik_after_dispersion
+      );
+    }
+
+    ctx.evaluate_criteria();
 
     const double beta_diff =
       arma::norm(ctx.state.api.beta - beta_old, 2);
@@ -218,22 +569,32 @@ inline void fit_stagewise_path(
     const double negloglik_diff =
       std::abs(ctx.state.api.negloglik - negloglik_old);
 
-    const double improvement =
-      negloglik_old - ctx.state.api.negloglik;
-
     ctx.state.api.iteration = iter + 1;
 
     if (ctx.control.api.verbose) {
-      Rcpp::Rcout
-      << "iter = " << ctx.state.api.iteration
-      << ", negloglik = " << ctx.state.api.negloglik
-      << ", improvement = " << improvement
-      << ", beta_diff = " << beta_diff
-      << ", theta_diff = " << theta_diff
-      << ", dispersion_diff = " << dispersion_diff
-      << ", negloglik_diff = " << negloglik_diff
-      << ", epsilon = " << ctx.state.api.epsilon
-      << "\n";
+      ecountgmifs_print_blank_line();
+      ecountgmifs_print_section_header(
+        "end"
+      );
+      ecountgmifs_verbose_field(
+        "negloglik",
+        ctx.state.api.negloglik
+      );
+      ecountgmifs_verbose_field(
+        "pseudo_r2",
+        ctx.state.api.pseudo_r2
+      );
+      ecountgmifs_verbose_field(
+        "epsilon",
+        ctx.state.api.epsilon
+      );
+      ecountgmifs_verbose_field(
+        "active_beta",
+        ecountgmifs_active_beta_count(
+          ctx.state.api.beta,
+          ctx.control.api.tol
+        )
+      );
     }
 
     /*
@@ -257,7 +618,23 @@ inline void fit_stagewise_path(
       ctx.set_message("beta_converged");
       if (ctx.control.api.verbose) {
         Rcpp::Rcout
-        << "stagewise path stopped: beta stalled\n";
+        << "[ecountgmifs]   stop checks:\n";
+        ecountgmifs_verbose_field(
+          "beta_stalled",
+          beta_stalled
+        );
+        ecountgmifs_verbose_field(
+          "beta_diff",
+          beta_diff
+        );
+        ecountgmifs_verbose_field(
+          "epsilon_min",
+          ctx.control.api.epsilon_min
+        );
+        ecountgmifs_verbose_stop(
+          ctx,
+          "beta_converged"
+        );
       }
 
       return;
@@ -272,22 +649,51 @@ inline void fit_stagewise_path(
 
     if (ctx.control.api.verbose) {
       Rcpp::Rcout
-      << "stop flags: beta_stalled=" << beta_stalled
-      << ", nonpen_stalled=" << nonpen_stalled
-      << ", objective_stalled=" << objective_stalled
-      << ", beta_diff=" << beta_diff
-      << ", epsilon_min=" << ctx.control.api.epsilon_min
-      << ", tol=" << ctx.control.api.tol
-      << "\n";
+      << "[ecountgmifs]   stop checks:\n";
+      ecountgmifs_verbose_field(
+        "beta_stalled",
+        beta_stalled
+      );
+      ecountgmifs_verbose_field(
+        "nonpen_stalled",
+        nonpen_stalled
+      );
+      ecountgmifs_verbose_field(
+        "objective_stalled",
+        objective_stalled
+      );
+      ecountgmifs_verbose_field(
+        "beta_diff",
+        beta_diff
+      );
+      ecountgmifs_verbose_field(
+        "theta_diff",
+        theta_diff
+      );
+      ecountgmifs_verbose_field(
+        "dispersion_diff",
+        dispersion_diff
+      );
+      ecountgmifs_verbose_field(
+        "negloglik_diff",
+        negloglik_diff
+      );
+
+      Rcpp::Rcout << "Duration: " << std::chrono::duration<double>(
+          std::chrono::steady_clock::now() - t
+      ).count() << " s\n";
     }
+
+
 
     if (beta_stalled || objective_stalled) {
       ctx.set_message("objective_stalled");
 
       if (ctx.control.api.verbose) {
-        Rcpp::Rcout
-        << "stagewise path stopped: beta step, nonpen parameters, "
-        << "and negloglik all stalled\n";
+        ecountgmifs_verbose_stop(
+          ctx,
+          "objective_stalled"
+        );
       }
 
       ctx.update_tracking();
@@ -311,11 +717,14 @@ inline void fit_stagewise_path(
         ctx.set_message("pseudo_r2_cutoff");
 
         if (ctx.control.api.verbose) {
-          Rcpp::Rcout
-          << "stagewise path stopped: pseudo_r2 cutoff"
-          << ", pseudo_r2=" << ctx.state.api.pseudo_r2
-          << ", target=" << target_pseudo_r2
-          << "\n";
+          ecountgmifs_verbose_stop(
+            ctx,
+            "pseudo_r2_cutoff"
+          );
+          ecountgmifs_verbose_field(
+            "target_pseudo_r2",
+            target_pseudo_r2
+          );
         }
 
         return;

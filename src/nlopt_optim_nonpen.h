@@ -18,14 +18,56 @@
  *   - fit_saturated()
  *
  * NLopt callbacks are static inline member functions.
- * They call context setters, so eta/mu/negloglik recomputation stays hidden
- * behind the context/state transition mechanism.
+ * They evaluate trial objectives in local workspaces and do not mutate the
+ * accepted context state. The optimizer result is committed once after NLopt
+ * returns.
  */
 
 struct NonpenNlopters
 {
   nlopt_opt theta_opt;
   nlopt_opt dispersion_opt;
+
+  struct ThetaObjectiveData
+  {
+    const EcountgmifsContextInternal* ctx;
+    arma::vec fixed_xbeta;
+    arma::vec eta_work;
+    arma::vec mu_work;
+
+    explicit ThetaObjectiveData(
+        const EcountgmifsContextInternal& ctx_
+    ) :
+      ctx(&ctx_),
+      fixed_xbeta(ctx_.input.api.X * ctx_.state.api.beta),
+      eta_work(ctx_.input.api.X.n_rows),
+      mu_work(ctx_.input.api.X.n_rows)
+    {}
+  };
+
+  struct DispersionObjectiveData
+  {
+    const EcountgmifsContextInternal* ctx;
+    const arma::vec* mu;
+
+    explicit DispersionObjectiveData(
+        const EcountgmifsContextInternal& ctx_
+    ) :
+      ctx(&ctx_),
+      mu(&(ctx_.state.api.mu))
+    {}
+  };
+
+  struct SaturatedDispersionObjectiveData
+  {
+    const EcountgmifsContextInternal* ctx;
+
+    explicit SaturatedDispersionObjectiveData(
+        const EcountgmifsContextInternal& ctx_
+    ) :
+      ctx(&ctx_)
+    {}
+  };
 
   explicit NonpenNlopters(
       EcountgmifsContextInternal& ctx
@@ -52,7 +94,6 @@ struct NonpenNlopters
     std::vector<double> theta_lower(q, -HUGE_VAL);
 
     nlopt_set_lower_bounds(theta_opt, theta_lower.data());
-    nlopt_set_min_objective(theta_opt, theta_objective, &ctx);
     nlopt_set_xtol_rel(theta_opt, ctx.control.api.nlopt_optim_reltol);
     nlopt_set_maxeval(theta_opt, static_cast<int>((q + 1) * 100));
 
@@ -89,7 +130,7 @@ struct NonpenNlopters
     }
   }
 
-  static inline double theta_objective(
+  static inline double theta_objective_local(
       unsigned n_theta,
       const double* theta,
       double* grad,
@@ -99,8 +140,16 @@ struct NonpenNlopters
       std::fill(grad, grad + n_theta, 0.0);
     }
 
-    EcountgmifsContextInternal* ctx =
-      reinterpret_cast<EcountgmifsContextInternal*>(data);
+    ThetaObjectiveData* objective_data =
+      reinterpret_cast<ThetaObjectiveData*>(data);
+
+    if (objective_data == nullptr ||
+        objective_data->ctx == nullptr) {
+      Rcpp::stop("theta_objective_local(): callback data is null");
+    }
+
+    const EcountgmifsContextInternal& ctx =
+      *(objective_data->ctx);
 
     arma::vec theta_trial(
         const_cast<double*>(theta),
@@ -109,9 +158,21 @@ struct NonpenNlopters
         true
     );
 
-    ctx->set_theta(theta_trial);
+    objective_data->eta_work =
+      ctx.input.api.w * theta_trial;
 
-    return ctx->state.api.negloglik;
+    objective_data->eta_work +=
+      objective_data->fixed_xbeta;
+
+    ctx.mu_mean_from_eta_inplace(
+      objective_data->eta_work,
+      objective_data->mu_work
+    );
+
+    return ctx.negloglik_from_mu_dispersion(
+      objective_data->mu_work,
+      ctx.state.api.dispersion
+    );
   }
 
   static inline double dispersion_objective(
@@ -128,12 +189,19 @@ struct NonpenNlopters
       Rcpp::stop("dispersion_objective(): expected one parameter");
     }
 
-    EcountgmifsContextInternal* ctx =
-      reinterpret_cast<EcountgmifsContextInternal*>(data);
+    DispersionObjectiveData* objective_data =
+      reinterpret_cast<DispersionObjectiveData*>(data);
 
-    ctx->set_dispersion(dispersion[0]);
+    if (objective_data == nullptr ||
+        objective_data->ctx == nullptr ||
+        objective_data->mu == nullptr) {
+      Rcpp::stop("dispersion_objective(): callback data is null");
+    }
 
-    return ctx->state.api.negloglik;
+    return objective_data->ctx->negloglik_from_mu_dispersion(
+      *(objective_data->mu),
+      dispersion[0]
+    );
   }
 
   static inline double saturated_dispersion_objective(
@@ -152,18 +220,32 @@ struct NonpenNlopters
       );
     }
 
-    EcountgmifsContextInternal* ctx =
-      reinterpret_cast<EcountgmifsContextInternal*>(data);
+    SaturatedDispersionObjectiveData* objective_data =
+      reinterpret_cast<SaturatedDispersionObjectiveData*>(data);
 
-    ctx->set_dispersion_saturated(dispersion[0]);
+    if (objective_data == nullptr ||
+        objective_data->ctx == nullptr) {
+      Rcpp::stop(
+        "saturated_dispersion_objective(): callback data is null"
+      );
+    }
 
-    return ctx->state.api.saturated_negloglik;
+    return objective_data->ctx->negloglik_saturated_from_dispersion(
+      dispersion[0]
+    );
   }
 
   arma::vec optimize_theta(
       EcountgmifsContextInternal& ctx
   ) {
     arma::vec theta_best = ctx.state.api.theta;
+    ThetaObjectiveData objective_data(ctx);
+
+    nlopt_set_min_objective(
+      theta_opt,
+      theta_objective_local,
+      &objective_data
+    );
 
     double minf = 0.0;
 
@@ -199,10 +281,12 @@ struct NonpenNlopters
       return ctx.control.api.fixed_dispersion_value;
     }
 
+    DispersionObjectiveData objective_data(ctx);
+
     nlopt_set_min_objective(
       dispersion_opt,
       dispersion_objective,
-      &ctx
+      &objective_data
     );
 
     double dispersion_best = ctx.state.api.dispersion;
@@ -253,10 +337,12 @@ struct NonpenNlopters
       return ctx.control.api.fixed_dispersion_value;
     }
 
+    SaturatedDispersionObjectiveData objective_data(ctx);
+
     nlopt_set_min_objective(
       dispersion_opt,
       saturated_dispersion_objective,
-      &ctx
+      &objective_data
     );
 
     double dispersion_best = ctx.state.api.saturated_dispersion;
@@ -297,5 +383,3 @@ struct NonpenNlopters
     return dispersion_best;
   }
 };
-
-
