@@ -31,7 +31,9 @@ struct NonpenNlopters
   struct ThetaObjectiveData
   {
     const EcountgmifsContextInternal* ctx;
-    arma::vec fixed_xbeta;
+    const arma::vec* fixed_xbeta;
+    FixedDispersionNegloglikData likelihood_data;
+    arma::vec wtheta_work;
     arma::vec eta_work;
     arma::vec mu_work;
 
@@ -39,7 +41,15 @@ struct NonpenNlopters
         const EcountgmifsContextInternal& ctx_
     ) :
       ctx(&ctx_),
-      fixed_xbeta(ctx_.input.api.X * ctx_.state.api.beta),
+      fixed_xbeta(&(ctx_.xbeta_n)),
+      likelihood_data(
+        ctx_.input.api.y,
+        ctx_.input.api.train_y_one_lgamma,
+        ctx_.input.api.family,
+        ctx_.state.api.dispersion,
+        ctx_.control.api.nb_poisson_fallback_eps
+      ),
+      wtheta_work(ctx_.input.api.X.n_rows),
       eta_work(ctx_.input.api.X.n_rows),
       mu_work(ctx_.input.api.X.n_rows)
     {}
@@ -158,20 +168,49 @@ struct NonpenNlopters
         true
     );
 
-    objective_data->eta_work =
+    objective_data->wtheta_work =
       ctx.input.api.w * theta_trial;
 
+    objective_data->eta_work =
+      objective_data->wtheta_work;
+
     objective_data->eta_work +=
-      objective_data->fixed_xbeta;
+      *(objective_data->fixed_xbeta);
 
     ctx.mu_mean_from_eta_inplace(
       objective_data->eta_work,
       objective_data->mu_work
     );
 
-    return ctx.negloglik_from_mu_dispersion(
+    return fixed_dispersion_negloglik(
       objective_data->mu_work,
-      ctx.state.api.dispersion
+      objective_data->likelihood_data
+    );
+  }
+
+  static inline void prepare_theta_selected_state(
+      const arma::vec& theta,
+      ThetaObjectiveData& objective_data
+  ) {
+    if (objective_data.ctx == nullptr) {
+      Rcpp::stop("prepare_theta_selected_state(): callback data is null");
+    }
+
+    const EcountgmifsContextInternal& ctx =
+      *(objective_data.ctx);
+
+    objective_data.wtheta_work =
+      ctx.input.api.w * theta;
+
+    objective_data.eta_work =
+      objective_data.wtheta_work;
+
+    objective_data.eta_work +=
+      *(objective_data.fixed_xbeta);
+
+    ctx.mu_mean_from_eta_inplace(
+      objective_data.eta_work,
+      objective_data.mu_work
     );
   }
 
@@ -238,6 +277,8 @@ struct NonpenNlopters
   arma::vec optimize_theta(
       EcountgmifsContextInternal& ctx
   ) {
+    ctx.ensure_accepted_linear_caches();
+
     arma::vec theta_best = ctx.state.api.theta;
     ThetaObjectiveData objective_data(ctx);
 
@@ -259,11 +300,38 @@ struct NonpenNlopters
       );
     }
 
-    /*
-     * The callback may leave ctx at the last trial theta.
-     * Commit NLopt's returned best theta.
-     */
-    ctx.set_theta(theta_best);
+    double selected_negloglik = minf;
+
+    if (result < 0) {
+      /*
+       * Keep the conservative failure path: explicitly evaluate the returned
+       * theta because NLopt's objective value is not trusted on failure.
+       */
+      selected_negloglik =
+        theta_objective_local(
+          static_cast<unsigned>(theta_best.n_elem),
+          theta_best.memptr(),
+          nullptr,
+          &objective_data
+        );
+    } else {
+      /*
+       * NLopt's returned theta and minf correspond on success. Prepare the
+       * accepted state vectors without another likelihood evaluation.
+       */
+      prepare_theta_selected_state(
+        theta_best,
+        objective_data
+      );
+    }
+
+    ctx.commit_theta_trial(
+      theta_best,
+      std::move(objective_data.wtheta_work),
+      std::move(objective_data.eta_work),
+      std::move(objective_data.mu_work),
+      selected_negloglik
+    );
 
     return theta_best;
   }
@@ -301,23 +369,46 @@ struct NonpenNlopters
     nlopt_result result =
       nlopt_optimize(dispersion_opt, &dispersion_best, &minf);
 
-    if (result < 0) {
+    const bool nlopt_failed =
+      result < 0;
+
+    if (nlopt_failed) {
       Rcpp::warning(
         "NLopt failed while optimizing dispersion: %d",
         static_cast<int>(result)
       );
     }
 
+    bool dispersion_corrected = false;
+
     if (dispersion_best < DISP_MIN_CAP ||
         !std::isfinite(dispersion_best)) {
         dispersion_best = DISP_MIN_CAP;
+        dispersion_corrected = true;
     }
 
-    /*
-     * The callback may leave ctx at the last trial dispersion.
-     * Commit NLopt's returned best dispersion.
-     */
-    ctx.set_dispersion(dispersion_best);
+    if (nlopt_failed || dispersion_corrected) {
+      /*
+       * Keep the conservative path when NLopt failed or when the returned
+       * dispersion was corrected after optimization: explicitly evaluate the
+       * objective at the value being committed.
+       */
+      const double selected_negloglik =
+        ctx.negloglik_from_mu_dispersion(
+          ctx.state.api.mu,
+          dispersion_best
+        );
+
+      ctx.commit_dispersion_trial(
+        dispersion_best,
+        selected_negloglik
+      );
+    } else {
+      ctx.commit_dispersion_trial(
+        dispersion_best,
+        minf
+      );
+    }
 
     return dispersion_best;
   }

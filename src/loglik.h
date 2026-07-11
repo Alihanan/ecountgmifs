@@ -49,9 +49,14 @@ inline double nb_negloglik(
   const double a = dispersion;
   const double one_over_a = 1.0 / a;
 
-  arma::vec a_mu = a * mu_safe;
-  arma::vec log_a_mu = arma::log(a_mu);
-  arma::vec log_one_plus_a_mu = arma::log1p(a_mu);
+  arma::vec a_mu =
+    a * mu_safe;
+
+  arma::vec log_a_mu =
+    arma::log(a_mu);
+
+  arma::vec log_one_plus_a_mu =
+    arma::log1p(a_mu);
 
   arma::vec logp =
     y % (log_a_mu - log_one_plus_a_mu) -
@@ -59,6 +64,98 @@ inline double nb_negloglik(
     arma::lgamma(y + one_over_a) +
     y_one_lgamma -
     std::lgamma(one_over_a);
+
+  return -arma::accu(logp);
+}
+
+struct FixedDispersionNegloglikData
+{
+  const arma::vec* y;
+  const arma::vec* y_one_lgamma;
+  EnumFamily family;
+  double dispersion;
+  double one_over_dispersion;
+  double lgamma_one_over_dispersion;
+  bool use_poisson;
+  arma::vec gamma_constant;
+
+  FixedDispersionNegloglikData(
+      const arma::vec& y_,
+      const arma::vec& y_one_lgamma_,
+      EnumFamily family_,
+      double dispersion_,
+      double poisson_fallback_eps
+  ) :
+    y(&y_),
+    y_one_lgamma(&y_one_lgamma_),
+    family(family_),
+    dispersion(dispersion_),
+    one_over_dispersion(0.0),
+    lgamma_one_over_dispersion(0.0),
+    use_poisson(
+      family_ == POISSON ||
+      dispersion_ <= poisson_fallback_eps
+    ),
+    gamma_constant()
+  {
+    if (family == NEGATIVE_BINOMIAL && !use_poisson) {
+      if (dispersion <= 0.0) {
+        return;
+      }
+
+      one_over_dispersion =
+        1.0 / dispersion;
+
+      lgamma_one_over_dispersion =
+        std::lgamma(one_over_dispersion);
+
+      gamma_constant.set_size(y_.n_elem);
+
+      for (arma::uword i = 0; i < y_.n_elem; ++i) {
+        gamma_constant[i] =
+          std::lgamma((*y)[i] + one_over_dispersion) +
+          (*y_one_lgamma)[i] -
+          lgamma_one_over_dispersion;
+      }
+    }
+  }
+};
+
+inline double fixed_dispersion_negloglik(
+    const arma::vec& mu,
+    const FixedDispersionNegloglikData& data
+) {
+  if (data.use_poisson) {
+    return poisson_negloglik(
+      mu,
+      *(data.y),
+      *(data.y_one_lgamma)
+    );
+  }
+
+  if (data.dispersion <= 0.0) {
+    return std::numeric_limits<double>::infinity();
+  }
+
+  const double a =
+    data.dispersion;
+
+  arma::vec mu_safe =
+    arma::clamp(mu, MU_MIN_CAP, MU_MAX_CAP);
+
+  arma::vec a_mu =
+    a * mu_safe;
+
+  arma::vec log_a_mu =
+    arma::log(a_mu);
+
+  arma::vec log_one_plus_a_mu =
+    arma::log1p(a_mu);
+
+  arma::vec logp =
+    (*(data.y)) % (log_a_mu - log_one_plus_a_mu) -
+    data.one_over_dispersion * log_one_plus_a_mu +
+    data.gamma_constant;
 
   return -arma::accu(logp);
 }

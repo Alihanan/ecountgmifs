@@ -6,6 +6,7 @@
 #include <string>
 #include <utility>
 #include <limits>
+#include <vector>
 
 #include "../inst/include/ecountgmifs/api.h"
 #include "enums.h"
@@ -378,6 +379,11 @@ struct EcountgmifsContextInternal
   std::string message;
   Rcpp::List criteria;
   arma::vec work_n;
+  arma::vec xbeta_n;
+  arma::vec wtheta_n;
+  bool xbeta_valid;
+  bool wtheta_valid;
+  std::vector<CriterionValue> criterion_values;
 
   EcountgmifsContext api;
 
@@ -399,6 +405,11 @@ struct EcountgmifsContextInternal
     message("not initialized"),
     criteria(),
     work_n(),
+    xbeta_n(),
+    wtheta_n(),
+    xbeta_valid(false),
+    wtheta_valid(false),
+    criterion_values(),
     api {
     input.api,
     control.api,
@@ -419,6 +430,11 @@ struct EcountgmifsContextInternal
     ),
     criteria(),
     work_n(),
+    xbeta_n(),
+    wtheta_n(),
+    xbeta_valid(false),
+    wtheta_valid(false),
+    criterion_values(),
     api {
     input.api,
     control.api,
@@ -621,13 +637,9 @@ struct EcountgmifsContextInternal
       const Rcpp::List& criteria_new
   ) {
     criteria = criteria_new;
-  }
+    criterion_values.clear();
 
-  void evaluate_criteria() {
     const R_xlen_t m = criteria.size();
-
-    Rcpp::NumericVector values(m);
-    Rcpp::CharacterVector value_names(m);
 
     Rcpp::CharacterVector list_names;
     const bool has_list_names =
@@ -637,6 +649,8 @@ struct EcountgmifsContextInternal
     if (has_list_names) {
       list_names = Rcpp::CharacterVector(criteria.attr("names"));
     }
+
+    criterion_values.reserve(static_cast<std::size_t>(m));
 
     for (R_xlen_t i = 0; i < m; ++i) {
       Rcpp::List criterion_obj(criteria[i]);
@@ -652,18 +666,41 @@ struct EcountgmifsContextInternal
         Rcpp::stop("criterion pointer is null");
       }
 
-      criterion_fun_t criterion =
-        reinterpret_cast<criterion_fun_t>(address);
-
-      values[i] = criterion(&api);
+      std::string criterion_name;
 
       if (has_list_names &&
           STRING_ELT(list_names, i) != NA_STRING &&
           CHAR(STRING_ELT(list_names, i))[0] != '\0') {
-        value_names[i] = STRING_ELT(list_names, i);
+        criterion_name =
+          CHAR(STRING_ELT(list_names, i));
       } else if (criterion_obj.containsElementNamed("name")) {
-        value_names[i] = Rcpp::as<std::string>(criterion_obj["name"]);
+        criterion_name =
+          Rcpp::as<std::string>(criterion_obj["name"]);
       }
+
+      criterion_values.emplace_back(
+        criterion_name,
+        reinterpret_cast<criterion_fun_t>(address)
+      );
+    }
+  }
+
+  void evaluate_criteria() {
+    const R_xlen_t m =
+      static_cast<R_xlen_t>(criterion_values.size());
+
+    Rcpp::NumericVector values(m);
+    Rcpp::CharacterVector value_names(m);
+
+    for (R_xlen_t i = 0; i < m; ++i) {
+      const CriterionValue& criterion =
+        criterion_values[static_cast<std::size_t>(i)];
+
+      values[i] =
+        criterion.function(&api);
+
+      value_names[i] =
+        criterion.name;
     }
 
     values.attr("names") = value_names;
@@ -676,6 +713,7 @@ struct EcountgmifsContextInternal
       should_track_state();
 
     if (save_state) {
+      evaluate_criteria();
       track_state();
 
       if (control.api.state_track_strategy == ACTIVE_SET_CHANGE) {
@@ -700,15 +738,65 @@ struct EcountgmifsContextInternal
     if (work_n.n_elem != n) {
       work_n.set_size(n);
     }
+
+    if (xbeta_n.n_elem != n) {
+      xbeta_n.set_size(n);
+      xbeta_valid = false;
+    }
+
+    if (wtheta_n.n_elem != n) {
+      wtheta_n.set_size(n);
+      wtheta_valid = false;
+    }
+
+  }
+
+  void refresh_xbeta_from_beta()
+  {
+    ensure_state_vectors();
+    xbeta_n =
+      input.api.X * state.api.beta;
+    xbeta_valid =
+      true;
+  }
+
+  void refresh_wtheta_from_theta()
+  {
+    ensure_state_vectors();
+    wtheta_n =
+      input.api.w * state.api.theta;
+    wtheta_valid =
+      true;
+  }
+
+  void ensure_accepted_linear_caches()
+  {
+    if (!xbeta_valid) {
+      refresh_xbeta_from_beta();
+    }
+
+    if (!wtheta_valid) {
+      refresh_wtheta_from_theta();
+    }
+  }
+
+  void refresh_eta_from_components()
+  {
+    ensure_state_vectors();
+    ensure_accepted_linear_caches();
+
+    state.api.eta =
+      wtheta_n;
+
+    state.api.eta +=
+      xbeta_n;
   }
 
   void refresh_eta_inplace()
   {
-    ensure_state_vectors();
-
-    state.api.eta = input.api.w * state.api.theta;
-    work_n = input.api.X * state.api.beta;
-    state.api.eta += work_n;
+    refresh_xbeta_from_beta();
+    refresh_wtheta_from_theta();
+    refresh_eta_from_components();
   }
 
   void refresh_mu_inplace()
@@ -735,6 +823,24 @@ struct EcountgmifsContextInternal
   void refresh()
   {
     refresh_eta_inplace();
+    refresh_mu_inplace();
+    refresh_negloglik_from_mu();
+    refresh_pseudo_r2();
+  }
+
+  void refresh_after_beta_change()
+  {
+    refresh_xbeta_from_beta();
+    refresh_eta_from_components();
+    refresh_mu_inplace();
+    refresh_negloglik_from_mu();
+    refresh_pseudo_r2();
+  }
+
+  void refresh_after_theta_change()
+  {
+    refresh_wtheta_from_theta();
+    refresh_eta_from_components();
     refresh_mu_inplace();
     refresh_negloglik_from_mu();
     refresh_pseudo_r2();
@@ -790,7 +896,8 @@ struct EcountgmifsContextInternal
       Rcpp::stop("set_theta(): incompatible theta size");
     }
     state.api.theta = theta_new;
-    refresh();
+    wtheta_valid = false;
+    refresh_after_theta_change();
   }
   void set_beta(const arma::vec& beta_new)
   {
@@ -798,11 +905,13 @@ struct EcountgmifsContextInternal
       Rcpp::stop("set_beta(): incompatible beta size");
     }
     state.api.beta = beta_new;
-    refresh();
+    xbeta_valid = false;
+    refresh_after_beta_change();
   }
 
   void commit_beta_trial(
       arma::vec&& beta_new,
+      arma::vec&& xbeta_new,
       arma::vec&& eta_new,
       arma::vec&& mu_new,
       double negloglik_new
@@ -811,13 +920,58 @@ struct EcountgmifsContextInternal
       Rcpp::stop("commit_beta_trial(): incompatible beta size");
     }
 
-    if (eta_new.n_elem != input.api.X.n_rows ||
+    if (xbeta_new.n_elem != input.api.X.n_rows ||
+        eta_new.n_elem != input.api.X.n_rows ||
         mu_new.n_elem != input.api.X.n_rows) {
-      Rcpp::stop("commit_beta_trial(): incompatible eta/mu size");
+      Rcpp::stop("commit_beta_trial(): incompatible xbeta/eta/mu size");
     }
 
     state.api.beta =
       std::move(beta_new);
+
+    xbeta_n =
+      std::move(xbeta_new);
+
+    xbeta_valid =
+      true;
+
+    state.api.eta =
+      std::move(eta_new);
+
+    state.api.mu =
+      std::move(mu_new);
+
+    state.api.negloglik =
+      negloglik_new;
+
+    refresh_pseudo_r2();
+  }
+
+  void commit_theta_trial(
+      const arma::vec& theta_new,
+      arma::vec&& wtheta_new,
+      arma::vec&& eta_new,
+      arma::vec&& mu_new,
+      double negloglik_new
+  ) {
+    if (theta_new.n_elem != state.api.theta.n_elem) {
+      Rcpp::stop("commit_theta_trial(): incompatible theta size");
+    }
+
+    if (wtheta_new.n_elem != input.api.X.n_rows ||
+        eta_new.n_elem != input.api.X.n_rows ||
+        mu_new.n_elem != input.api.X.n_rows) {
+      Rcpp::stop("commit_theta_trial(): incompatible wtheta/eta/mu size");
+    }
+
+    state.api.theta =
+      theta_new;
+
+    wtheta_n =
+      std::move(wtheta_new);
+
+    wtheta_valid =
+      true;
 
     state.api.eta =
       std::move(eta_new);
@@ -845,6 +999,8 @@ struct EcountgmifsContextInternal
 
     state.api.theta = theta_new;
     state.api.beta = beta_new;
+    xbeta_valid = false;
+    wtheta_valid = false;
     refresh();
   }
   void set_dispersion(double dispersion_new)
@@ -861,6 +1017,31 @@ struct EcountgmifsContextInternal
 
     state.api.dispersion = dispersion_new;
     refresh_after_dispersion_change();
+  }
+
+  void commit_dispersion_trial(
+      double dispersion_new,
+      double negloglik_new
+  ) {
+    if (input.api.family == NEGATIVE_BINOMIAL) {
+      if (dispersion_new <= 0.0 || !std::isfinite(dispersion_new)) {
+        Rcpp::stop(
+          "commit_dispersion_trial(): dispersion must be positive and finite"
+        );
+      }
+    }
+
+    if (input.api.family == POISSON) {
+      dispersion_new = 0.0;
+    }
+
+    state.api.dispersion =
+      dispersion_new;
+
+    state.api.negloglik =
+      negloglik_new;
+
+    refresh_pseudo_r2();
   }
 
 
@@ -890,19 +1071,17 @@ struct EcountgmifsContextInternal
   double negloglik_saturated_from_dispersion(
       double dispersion
   ) const {
-    arma::vec mu_saturated = input.api.y;
-
     switch (input.api.family) {
     case POISSON:
       return poisson_negloglik(
-        mu_saturated,
+        input.api.y,
         input.api.y,
         input.api.train_y_one_lgamma
       );
 
     case NEGATIVE_BINOMIAL:
       return nb_negloglik(
-        mu_saturated,
+        input.api.y,
         input.api.y,
         dispersion,
         input.api.train_y_one_lgamma,
@@ -1016,6 +1195,11 @@ struct EcountgmifsContextInternal
     message(std::move(other.message)),
     criteria(std::move(other.criteria)),
     work_n(std::move(other.work_n)),
+    xbeta_n(std::move(other.xbeta_n)),
+    wtheta_n(std::move(other.wtheta_n)),
+    xbeta_valid(other.xbeta_valid),
+    wtheta_valid(other.wtheta_valid),
+    criterion_values(std::move(other.criterion_values)),
     api {
     input.api,
     control.api,

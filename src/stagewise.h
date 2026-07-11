@@ -170,12 +170,14 @@ inline void ecountgmifs_verbose_stop(
   );
 }
 
-inline arma::vec compute_beta_step(
+inline void compute_beta_step_inplace(
     EcountgmifsContextInternal& ctx,
     const arma::vec& grad_beta,
-    double epsilon
+    double epsilon,
+    ElasticNetWeightWorkspace& enet_workspace,
+    arma::vec& beta_step_out
 ) {
-  return solve_elastic_net_1D_weight(
+  solve_elastic_net_1D_weight_inplace(
     grad_beta,
     ctx.input.api.weight_vec,
     ctx.input.api.enet_alpha,
@@ -183,22 +185,26 @@ inline arma::vec compute_beta_step(
     ctx.control.api.tol,
     1e-6,
     99,
-    false
+    false,
+    enet_workspace,
+    beta_step_out
   );
 }
 
 struct BetaTrialWorkspace
 {
+  const arma::vec* fixed_wtheta;
   arma::vec beta_candidate;
-  arma::vec fixed_wtheta;
+  arma::vec xbeta_work;
   arma::vec eta_work;
   arma::vec mu_work;
 
   explicit BetaTrialWorkspace(
       const EcountgmifsContextInternal& ctx
   ) :
+    fixed_wtheta(&(ctx.wtheta_n)),
     beta_candidate(ctx.state.api.beta.n_elem),
-    fixed_wtheta(ctx.input.api.w * ctx.state.api.theta),
+    xbeta_work(ctx.input.api.X.n_rows),
     eta_work(ctx.input.api.X.n_rows),
     mu_work(ctx.input.api.X.n_rows)
   {}
@@ -216,11 +222,14 @@ inline double evaluate_beta_trial_negloglik(
   workspace.beta_candidate +=
     beta_step;
 
-  workspace.eta_work =
+  workspace.xbeta_work =
     ctx.input.api.X * workspace.beta_candidate;
 
+  workspace.eta_work =
+    *(workspace.fixed_wtheta);
+
   workspace.eta_work +=
-    workspace.fixed_wtheta;
+    workspace.xbeta_work;
 
   ctx.mu_mean_from_eta_inplace(
     workspace.eta_work,
@@ -238,6 +247,7 @@ inline bool try_beta_step_with_halving(
     const arma::vec& beta_old,
     const arma::vec& grad_beta,
     double negloglik_old,
+    ElasticNetWeightWorkspace& enet_workspace,
     arma::vec& beta_step_out,
     uint64_t& halvings_out
 ) {
@@ -259,6 +269,7 @@ inline bool try_beta_step_with_halving(
     );
 
   halvings_out = 0;
+  ctx.ensure_accepted_linear_caches();
   BetaTrialWorkspace workspace(ctx);
 
   while (true) {
@@ -267,15 +278,15 @@ inline bool try_beta_step_with_halving(
       return false;
     }
 
-    arma::vec beta_step =
-      compute_beta_step(
-        ctx,
-        grad_beta,
-        ctx.state.api.epsilon
-      );
+    compute_beta_step_inplace(
+      ctx,
+      grad_beta,
+      ctx.state.api.epsilon,
+      enet_workspace,
+      beta_step_out
+    );
 
-    if (step_is_zero(beta_step, ctx.control.api.epsilon_min)) {
-      beta_step_out = beta_step;
+    if (step_is_zero(beta_step_out, ctx.control.api.epsilon_min)) {
       return false;
     }
 
@@ -283,7 +294,7 @@ inline bool try_beta_step_with_halving(
       evaluate_beta_trial_negloglik(
         ctx,
         beta_old,
-        beta_step,
+        beta_step_out,
         workspace
       );
 
@@ -294,9 +305,9 @@ inline bool try_beta_step_with_halving(
      * Accept if the beta step does not worsen the minimized objective.
      */
     if (trial_negloglik <= negloglik_old) {
-      beta_step_out = beta_step;
       ctx.commit_beta_trial(
         std::move(workspace.beta_candidate),
+        std::move(workspace.xbeta_work),
         std::move(workspace.eta_work),
         std::move(workspace.mu_work),
         trial_negloglik
@@ -338,26 +349,42 @@ inline void fit_stagewise_path(
    * At entry, beta is usually zero and theta/dispersion are initialized.
    */
 
+  double t_grad = 0.0;
+  double t_theta = 0.0;
+  double t_disp = 0.0;
+  double t_start = 0.0;
+  double t_fs = 0.0;
+  double t_aftertrack = 0.0;
+  double t_beforetrack = 0.0;
+  auto t = std::chrono::steady_clock::now();
+
+  ElasticNetWeightWorkspace enet_workspace(
+    ctx.state.api.beta.n_elem
+  );
+
+  arma::vec beta_step(
+    ctx.state.api.beta.n_elem,
+    arma::fill::zeros
+  );
+
   for (uint64_t iter = 0;
        iter < ctx.control.api.iteration_max;
        ++iter) {
 
-    auto t = std::chrono::steady_clock::now();
+
+    t_start += (std::chrono::duration<double>(
+      std::chrono::steady_clock::now() - t
+    ).count() - t_start) / (iter+1);
+    Rprintf("Duration at start of iteration step: %.6f s\n",t_start);
+    t = std::chrono::steady_clock::now();
 
     ctx.state.api.iteration = iter + 1;
 
     const arma::vec beta_old = ctx.state.api.beta;
-    const arma::vec theta_old = ctx.state.api.theta;
+    arma::vec theta_old;
     const double dispersion_old = ctx.state.api.dispersion;
     const double negloglik_old = ctx.state.api.negloglik;
     const double pseudo_r2_old = ctx.state.api.pseudo_r2;
-    const arma::uword active_beta_old =
-      ecountgmifs_active_beta_count(
-        beta_old,
-        ctx.control.api.tol
-      );
-    const double theta_norm_old =
-      arma::norm(theta_old, 2);
 
     arma::vec grad_beta =
       gradient_beta(
@@ -371,20 +398,25 @@ inline void fit_stagewise_path(
         ctx.state.api.dispersion
       );
 
-    arma::vec weighted_grad =
-      arma::abs(grad_beta) / ctx.input.api.weight_vec;
-
-    arma::uword max_grad_j = 0;
-    double max_grad = 0.0;
-    double max_grad_weighted = 0.0;
-
-    if (weighted_grad.n_elem > 0) {
-      max_grad_j = weighted_grad.index_max();
-      max_grad = grad_beta[max_grad_j];
-      max_grad_weighted = weighted_grad[max_grad_j];
-    }
+    t_grad += (std::chrono::duration<double>(
+      std::chrono::steady_clock::now() - t
+    ).count() - t_grad) / (iter+1);
+    Rprintf("Duration after gradient step: %.6f s\n",t_grad);
+    t = std::chrono::steady_clock::now();
 
     if (ctx.control.api.verbose) {
+      theta_old =
+        ctx.state.api.theta;
+
+      const arma::uword active_beta_old =
+        ecountgmifs_active_beta_count(
+          beta_old,
+          ctx.control.api.tol
+        );
+
+      const double theta_norm_old =
+        arma::norm(theta_old, 2);
+
       ecountgmifs_print_iteration_header(
         ctx.state.api.iteration
       );
@@ -417,11 +449,6 @@ inline void fit_stagewise_path(
       );
     }
 
-    arma::vec beta_step(
-        beta_old.n_elem,
-        arma::fill::zeros
-    );
-
     uint64_t beta_halvings = 0;
 
     const bool beta_step_accepted =
@@ -430,6 +457,7 @@ inline void fit_stagewise_path(
         beta_old,
         grad_beta,
         negloglik_old,
+        enet_workspace,
         beta_step,
         beta_halvings
       );
@@ -443,16 +471,41 @@ inline void fit_stagewise_path(
       return;
     }
 
+    t_fs += (std::chrono::duration<double>(
+      std::chrono::steady_clock::now() - t
+    ).count() - t_fs) / (iter+1);
+    Rprintf("Duration after FS step: %.6f s\n",t_fs);
+    t = std::chrono::steady_clock::now();
+
     const double negloglik_after_beta =
       ctx.state.api.negloglik;
 
-    const arma::uword active_beta_after_beta =
-      ecountgmifs_active_beta_count(
-        ctx.state.api.beta,
-        ctx.control.api.tol
-      );
-
     if (ctx.control.api.verbose) {
+      arma::vec weighted_grad =
+        arma::abs(grad_beta) / ctx.input.api.weight_vec;
+
+      arma::uword max_grad_j = 0;
+      double max_grad = 0.0;
+      double max_grad_weighted = 0.0;
+
+      if (weighted_grad.n_elem > 0) {
+        max_grad_j = weighted_grad.index_max();
+        max_grad = grad_beta[max_grad_j];
+        max_grad_weighted = weighted_grad[max_grad_j];
+      }
+
+      const arma::uword active_beta_old =
+        ecountgmifs_active_beta_count(
+          beta_old,
+          ctx.control.api.tol
+        );
+
+      const arma::uword active_beta_after_beta =
+        ecountgmifs_active_beta_count(
+          ctx.state.api.beta,
+          ctx.control.api.tol
+        );
+
       ecountgmifs_print_blank_line();
       ecountgmifs_print_section_header(
         "beta step"
@@ -497,7 +550,6 @@ inline void fit_stagewise_path(
         max_grad_weighted
       );
     }
-
     /*
      * Refit nonpenalized part conditional on new beta.
      * These optimizers commit their returned best values via ctx.set_theta()
@@ -507,6 +559,12 @@ inline void fit_stagewise_path(
 
     const double negloglik_after_theta =
       ctx.state.api.negloglik;
+
+    t_theta += (std::chrono::duration<double>(
+      std::chrono::steady_clock::now() - t
+    ).count() - t_theta) / (iter+1);
+    Rprintf("Duration after theta step: %.6f s\n",t_theta);
+    t = std::chrono::steady_clock::now();
 
     if (ctx.control.api.verbose) {
       ecountgmifs_print_blank_line();
@@ -555,16 +613,14 @@ inline void fit_stagewise_path(
       );
     }
 
-    ctx.evaluate_criteria();
+    t_disp += (std::chrono::duration<double>(
+      std::chrono::steady_clock::now() - t
+    ).count() - t_disp) / (iter+1);
+    Rprintf("Duration after dispersion step: %.6f s\n",t_disp);
+    t = std::chrono::steady_clock::now();
 
     const double beta_diff =
       arma::norm(ctx.state.api.beta - beta_old, 2);
-
-    const double theta_diff =
-      arma::norm(ctx.state.api.theta - theta_old, 2);
-
-    const double dispersion_diff =
-      std::abs(ctx.state.api.dispersion - dispersion_old);
 
     const double negloglik_diff =
       std::abs(ctx.state.api.negloglik - negloglik_old);
@@ -640,14 +696,20 @@ inline void fit_stagewise_path(
       return;
     }
 
-    const bool nonpen_stalled =
-      theta_diff < ctx.control.api.tol &&
-      dispersion_diff < ctx.control.api.tol;
-
     const bool objective_stalled =
       negloglik_diff < ctx.control.api.tol;
 
     if (ctx.control.api.verbose) {
+      const double theta_diff =
+        arma::norm(ctx.state.api.theta - theta_old, 2);
+
+      const double dispersion_diff =
+        std::abs(ctx.state.api.dispersion - dispersion_old);
+
+      const bool nonpen_stalled =
+        theta_diff < ctx.control.api.tol &&
+        dispersion_diff < ctx.control.api.tol;
+
       Rcpp::Rcout
       << "[ecountgmifs]   stop checks:\n";
       ecountgmifs_verbose_field(
@@ -678,10 +740,6 @@ inline void fit_stagewise_path(
         "negloglik_diff",
         negloglik_diff
       );
-
-      Rcpp::Rcout << "Duration: " << std::chrono::duration<double>(
-          std::chrono::steady_clock::now() - t
-      ).count() << " s\n";
     }
 
 
@@ -731,7 +789,19 @@ inline void fit_stagewise_path(
       }
     }
 
+    t_beforetrack += (std::chrono::duration<double>(
+      std::chrono::steady_clock::now() - t
+    ).count() - t_beforetrack) / (iter+1);
+    Rprintf("Duration before tracking step: %.6f s\n",t_beforetrack);
+    t = std::chrono::steady_clock::now();
+
     // Save state if not break
     ctx.update_tracking();
+
+    t_aftertrack += (std::chrono::duration<double>(
+      std::chrono::steady_clock::now() - t
+    ).count() - t_aftertrack) / (iter+1);
+    Rprintf("Duration after tracking step: %.6f s\n",t_aftertrack);
+    t = std::chrono::steady_clock::now();
   }
 }
