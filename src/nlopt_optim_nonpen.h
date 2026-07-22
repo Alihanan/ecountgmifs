@@ -36,6 +36,7 @@ struct NonpenNlopters
     arma::vec wtheta_work;
     arma::vec eta_work;
     arma::vec mu_work;
+    NegloglikWorkspace likelihood_workspace;
 
     explicit ThetaObjectiveData(
         const EcountgmifsContextInternal& ctx_
@@ -51,7 +52,8 @@ struct NonpenNlopters
       ),
       wtheta_work(ctx_.input.api.X.n_rows),
       eta_work(ctx_.input.api.X.n_rows),
-      mu_work(ctx_.input.api.X.n_rows)
+      mu_work(ctx_.input.api.X.n_rows),
+      likelihood_workspace(ctx_.input.api.X.n_rows)
     {}
   };
 
@@ -59,23 +61,27 @@ struct NonpenNlopters
   {
     const EcountgmifsContextInternal* ctx;
     const arma::vec* mu;
+    NegloglikWorkspace likelihood_workspace;
 
     explicit DispersionObjectiveData(
         const EcountgmifsContextInternal& ctx_
     ) :
       ctx(&ctx_),
-      mu(&(ctx_.state.api.mu))
+      mu(&(ctx_.state.api.mu)),
+      likelihood_workspace(ctx_.input.api.X.n_rows)
     {}
   };
 
   struct SaturatedDispersionObjectiveData
   {
     const EcountgmifsContextInternal* ctx;
+    NegloglikWorkspace likelihood_workspace;
 
     explicit SaturatedDispersionObjectiveData(
         const EcountgmifsContextInternal& ctx_
     ) :
-      ctx(&ctx_)
+      ctx(&ctx_),
+      likelihood_workspace(ctx_.input.api.y.n_elem)
     {}
   };
 
@@ -83,7 +89,9 @@ struct NonpenNlopters
       EcountgmifsContextInternal& ctx
   ) :
     theta_opt(nullptr),
-    dispersion_opt(nullptr)
+    dispersion_opt(nullptr),
+    theta_objective_data(ctx),
+    dispersion_objective_data(ctx)
   {
     const unsigned q =
       static_cast<unsigned>(ctx.state.api.theta.n_elem);
@@ -140,6 +148,9 @@ struct NonpenNlopters
     }
   }
 
+  ThetaObjectiveData theta_objective_data;
+  DispersionObjectiveData dispersion_objective_data;
+
   static inline double theta_objective_local(
       unsigned n_theta,
       const double* theta,
@@ -160,6 +171,74 @@ struct NonpenNlopters
 
     const EcountgmifsContextInternal& ctx =
       *(objective_data->ctx);
+
+    if (n_theta == 1) {
+      const arma::uword n =
+        ctx.input.api.X.n_rows;
+
+      if (objective_data->mu_work.n_elem != n) {
+        objective_data->mu_work.set_size(n);
+      }
+
+      const double theta0 =
+        theta[0];
+
+      switch (ctx.input.api.link_func) {
+      case LOG_LINK: {
+        for (arma::uword i = 0; i < n; ++i) {
+          const double eta_without_offset =
+            (*(objective_data->fixed_xbeta))[i] +
+            ctx.input.api.w(i, 0) * theta0;
+
+          const double eta_total =
+            clamp_scalar(
+              ctx.input.api.offset[i] + eta_without_offset,
+              ETA_MIN_CAP,
+              ETA_MAX_CAP
+            );
+
+          objective_data->mu_work[i] =
+            clamp_scalar(
+              std::exp(eta_total),
+              MU_MIN_CAP,
+              MU_MAX_CAP
+            );
+        }
+
+        break;
+      }
+
+      case SOFTPLUS_LINK: {
+        for (arma::uword i = 0; i < n; ++i) {
+          const double eta_without_offset =
+            (*(objective_data->fixed_xbeta))[i] +
+            ctx.input.api.w(i, 0) * theta0;
+
+          const double mu_i =
+            std::exp(ctx.input.api.offset[i]) *
+            softplus_scalar(eta_without_offset);
+
+          objective_data->mu_work[i] =
+            clamp_scalar(
+              mu_i,
+              MU_MIN_CAP,
+              MU_MAX_CAP
+            );
+        }
+
+        break;
+      }
+
+      default:
+        Rcpp::stop("unknown link function");
+      }
+
+      return fixed_dispersion_negloglik_inplace(
+        objective_data->mu_work,
+        objective_data->likelihood_data,
+        objective_data->likelihood_workspace
+      );
+    }
 
     arma::vec theta_trial(
         const_cast<double*>(theta),
@@ -182,9 +261,10 @@ struct NonpenNlopters
       objective_data->mu_work
     );
 
-    return fixed_dispersion_negloglik(
+    return fixed_dispersion_negloglik_inplace(
       objective_data->mu_work,
-      objective_data->likelihood_data
+      objective_data->likelihood_data,
+      objective_data->likelihood_workspace
     );
   }
 
@@ -239,7 +319,8 @@ struct NonpenNlopters
 
     return objective_data->ctx->negloglik_from_mu_dispersion(
       *(objective_data->mu),
-      dispersion[0]
+      dispersion[0],
+      objective_data->likelihood_workspace
     );
   }
 
@@ -270,7 +351,8 @@ struct NonpenNlopters
     }
 
     return objective_data->ctx->negloglik_saturated_from_dispersion(
-      dispersion[0]
+      dispersion[0],
+      objective_data->likelihood_workspace
     );
   }
 
@@ -280,12 +362,23 @@ struct NonpenNlopters
     ctx.ensure_accepted_linear_caches();
 
     arma::vec theta_best = ctx.state.api.theta;
-    ThetaObjectiveData objective_data(ctx);
+
+    theta_objective_data.ctx =
+      &ctx;
+
+    theta_objective_data.fixed_xbeta =
+      &(ctx.xbeta_n);
+
+    theta_objective_data.likelihood_data.refresh(
+      ctx.input.api.family,
+      ctx.state.api.dispersion,
+      ctx.control.api.nb_poisson_fallback_eps
+    );
 
     nlopt_set_min_objective(
       theta_opt,
       theta_objective_local,
-      &objective_data
+      &theta_objective_data
     );
 
     double minf = 0.0;
@@ -312,7 +405,7 @@ struct NonpenNlopters
           static_cast<unsigned>(theta_best.n_elem),
           theta_best.memptr(),
           nullptr,
-          &objective_data
+          &theta_objective_data
         );
     } else {
       /*
@@ -321,15 +414,15 @@ struct NonpenNlopters
        */
       prepare_theta_selected_state(
         theta_best,
-        objective_data
+        theta_objective_data
       );
     }
 
-    ctx.commit_theta_trial(
+    ctx.commit_theta_trial_swap(
       theta_best,
-      std::move(objective_data.wtheta_work),
-      std::move(objective_data.eta_work),
-      std::move(objective_data.mu_work),
+      theta_objective_data.wtheta_work,
+      theta_objective_data.eta_work,
+      theta_objective_data.mu_work,
       selected_negloglik
     );
 
@@ -349,12 +442,16 @@ struct NonpenNlopters
       return ctx.control.api.fixed_dispersion_value;
     }
 
-    DispersionObjectiveData objective_data(ctx);
+    dispersion_objective_data.ctx =
+      &ctx;
+
+    dispersion_objective_data.mu =
+      &(ctx.state.api.mu);
 
     nlopt_set_min_objective(
       dispersion_opt,
       dispersion_objective,
-      &objective_data
+      &dispersion_objective_data
     );
 
     double dispersion_best = ctx.state.api.dispersion;
@@ -396,7 +493,8 @@ struct NonpenNlopters
       const double selected_negloglik =
         ctx.negloglik_from_mu_dispersion(
           ctx.state.api.mu,
-          dispersion_best
+          dispersion_best,
+          dispersion_objective_data.likelihood_workspace
         );
 
       ctx.commit_dispersion_trial(

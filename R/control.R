@@ -67,6 +67,12 @@
 #' @param nb.poisson.fallback.eps numeric. Non-negative dispersion threshold
 #'   below which the negative-binomial likelihood is evaluated using the
 #'   Poisson likelihood for numerical stability.
+#' @param enet.abs.tol numeric. Positive absolute tolerance used by the
+#'   one-dimensional weighted elastic-net lambda bracketing/bisection solver.
+#' @param enet.rel.tol numeric. Non-negative relative tolerance used by the
+#'   one-dimensional weighted elastic-net lambda bracketing/bisection solver.
+#' @param enet.max.iter integer. Maximum number of bisection iterations used by
+#'   the one-dimensional weighted elastic-net lambda solver.
 #'
 #'
 #' @return A list of control parameters.
@@ -80,6 +86,9 @@ ecountgmifs.control <- function(
     nlopt.optim.reltol = tol,
     loglik.reltol.cutoff = 0.25,
     nb.poisson.fallback.eps = 1e-8,
+    enet.abs.tol = 1e-10,
+    enet.rel.tol = 1e-6,
+    enet.max.iter = 99L,
     state.track.strategy = c("all.iteration",
                              "active.set.change",
                               "every.k.iteration",
@@ -162,6 +171,28 @@ ecountgmifs.control <- function(
     stop("value of 'nb.poisson.fallback.eps' must be a non-negative number")
   }
 
+  if (!is.numeric(enet.abs.tol) ||
+      length(enet.abs.tol) != 1L ||
+      is.na(enet.abs.tol) ||
+      enet.abs.tol <= 0) {
+    stop("value of 'enet.abs.tol' must be > 0")
+  }
+
+  if (!is.numeric(enet.rel.tol) ||
+      length(enet.rel.tol) != 1L ||
+      is.na(enet.rel.tol) ||
+      enet.rel.tol < 0) {
+    stop("value of 'enet.rel.tol' must be >= 0")
+  }
+
+  if (!is.numeric(enet.max.iter) ||
+      length(enet.max.iter) != 1L ||
+      is.na(enet.max.iter) ||
+      enet.max.iter < 1 ||
+      enet.max.iter != as.integer(enet.max.iter)) {
+    stop("value of 'enet.max.iter' must be a positive integer")
+  }
+
   list(
     state.track.strategy = state.track.strategy,
     state.track.freq = as.integer(state.track.freq),
@@ -172,6 +203,9 @@ ecountgmifs.control <- function(
     tol = tol,
     nlopt.optim.reltol = nlopt.optim.reltol,
     loglik.reltol.cutoff = loglik.reltol.cutoff,
-    nb.poisson.fallback.eps = nb.poisson.fallback.eps
+    nb.poisson.fallback.eps = nb.poisson.fallback.eps,
+    enet.abs.tol = enet.abs.tol,
+    enet.rel.tol = enet.rel.tol,
+    enet.max.iter = as.integer(enet.max.iter)
   )
 }

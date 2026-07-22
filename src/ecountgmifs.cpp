@@ -18,6 +18,7 @@
 #include "nonpen_fit.h"
 #include "stagewise.h"
 #include "debug.h"
+#include "example.h" // TODO remove?
 
 // [[Rcpp::export]]
 Rcpp::List ecountgmifs_cpp(
@@ -41,12 +42,16 @@ Rcpp::List ecountgmifs_cpp(
     uint32_t iteration_max,
 
 
-    uint32_t family,
-    uint32_t linkfunc_int,
+    SEXP family = R_NilValue,
+    SEXP link_func = R_NilValue,
+    Rcpp::Nullable<Rcpp::List> criteria = R_NilValue
 
     double nlopt_optim_reltol,
     double loglik_reltol_cutoff,
     double nb_poisson_fallback_eps,
+    double enet_abs_tol,
+    double enet_rel_tol,
+    uint32_t enet_max_iter,
     bool verbose = false,
     bool is_fixed_disp = false,
     double fixed_disp_value = 0.0,
@@ -54,7 +59,7 @@ Rcpp::List ecountgmifs_cpp(
     int state_track_strategy = 0,
     uint64_t state_track_freq = 1,
 
-    Rcpp::Nullable<Rcpp::List> criteria = R_NilValue
+
 ) {
 
   ECOUNTGMIFS_VERBOSE(verbose,
@@ -70,8 +75,67 @@ Rcpp::List ecountgmifs_cpp(
                                << ", epsilon_max=" << epsilon_max
                                << ", epsilon_min=" << epsilon_min_tol
                                << ", tol=" << tol
+                               << ", enet_abs_tol=" << enet_abs_tol
+                               << ", enet_rel_tol=" << enet_rel_tol
+                               << ", enet_max_iter=" << enet_max_iter
                                << ", nlopt_reltol=" << nlopt_optim_reltol
   );
+
+  // #########################################################
+  //  Step 0: Resolve family, link function, criteria
+  // #########################################################
+  Rcpp::XPtr<IEcountgmifsFamily> family_ptr(family);
+  Rcpp::XPtr<IEcountgmifsLinkFunc> link_ptr(link_func);
+
+  if (family_ptr.get() == nullptr) {
+    Rcpp::stop("`family` contains a null external pointer.");
+  }
+
+  if (link_ptr.get() == nullptr) {
+    Rcpp::stop("`link_func` contains a null external pointer.");
+  }
+
+  IEcountgmifsFamily& family_impl = *family_ptr;
+  IEcountgmifsLinkFunc& link_impl = *link_ptr;
+
+  ECOUNTGMIFS_VERBOSE(
+    verbose,
+    "plugins: family_parameter_count="
+    << family_impl->parameter_count()
+    << ", link_parameter_count="
+    << link_impl->parameter_count()
+  );
+
+  Rcpp::List criteria_list;
+
+  if (criteria.isNull()) {
+    criteria_list = Rcpp::List::create();
+  } else {
+    criteria_list = Rcpp::List(criteria);
+  }
+
+  for (R_xlen_t i = 0; i < criteria_list.size(); ++i) {
+    SEXP criterion_sexp = criteria_list[i];
+
+    if (Rf_isNull(criterion_sexp)) {
+      Rcpp::stop(
+        "Criterion at position %d is NULL.",
+        static_cast<int>(i + 1)
+      );
+    }
+
+    Rcpp::XPtr<IEcountgmifsCriterion> criterion_ptr(
+        criterion_sexp
+    );
+
+    if (criterion_ptr.get() == nullptr) {
+      Rcpp::stop(
+        "Criterion at position %d contains a null external pointer.",
+        static_cast<int>(i + 1)
+      );
+    }
+  }
+
 
   // #########################################################
   //  Step 1: Save all arguments into a single context struct
@@ -93,11 +157,17 @@ Rcpp::List ecountgmifs_cpp(
     epsilon_min_tol,
     tol,
     iteration_max,
+
     family,
     linkfunc_int,
+    criteria,
+
     nlopt_optim_reltol,
     loglik_reltol_cutoff,
     nb_poisson_fallback_eps,
+    enet_abs_tol,
+    enet_rel_tol,
+    enet_max_iter,
     verbose,
     is_fixed_disp,
     fixed_disp_value,

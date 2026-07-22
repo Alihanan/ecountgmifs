@@ -8,37 +8,125 @@
 #include "../inst/include/ecountgmifs/api.h"
 #include "numerical_internal_constants.h"
 
+struct NegloglikWorkspace
+{
+  arma::vec mu_safe;
+  arma::vec a_mu;
+  arma::vec log_a_mu;
+  arma::vec log_one_plus_a_mu;
+  arma::vec gamma_work;
+  arma::vec logp;
+
+  explicit NegloglikWorkspace(
+      arma::uword n = 0
+  ) :
+    mu_safe(n),
+    a_mu(n),
+    log_a_mu(n),
+    log_one_plus_a_mu(n),
+    gamma_work(n),
+    logp(n)
+  {}
+
+  void ensure_size(
+      arma::uword n
+  ) {
+    if (mu_safe.n_elem != n) {
+      mu_safe.set_size(n);
+    }
+
+    if (a_mu.n_elem != n) {
+      a_mu.set_size(n);
+    }
+
+    if (log_a_mu.n_elem != n) {
+      log_a_mu.set_size(n);
+    }
+
+    if (log_one_plus_a_mu.n_elem != n) {
+      log_one_plus_a_mu.set_size(n);
+    }
+
+    if (gamma_work.n_elem != n) {
+      gamma_work.set_size(n);
+    }
+
+    if (logp.n_elem != n) {
+      logp.set_size(n);
+    }
+  }
+};
+
+inline double poisson_negloglik_inplace(
+    const arma::vec& mu,
+    const arma::vec& y,
+    const arma::vec& y_one_lgamma,
+    NegloglikWorkspace& workspace
+) {
+  workspace.ensure_size(mu.n_elem);
+
+  workspace.mu_safe =
+    mu;
+
+  workspace.mu_safe.clamp(
+    MU_MIN_CAP,
+    MU_MAX_CAP
+  );
+
+  workspace.logp =
+    arma::log(workspace.mu_safe);
+
+  workspace.logp %=
+    y;
+
+  workspace.logp -=
+    workspace.mu_safe;
+
+  workspace.logp +=
+    y_one_lgamma;
+
+  return -arma::accu(workspace.logp);
+}
+
 inline double poisson_negloglik(
     const arma::vec& mu,
     const arma::vec& y,
     const arma::vec& y_one_lgamma
 ) {
-  arma::vec mu_safe =
-    arma::clamp(mu, MU_MIN_CAP, MU_MAX_CAP);
+  NegloglikWorkspace workspace(mu.n_elem);
 
-  arma::vec logp =
-    y % arma::log(mu_safe) -
-    mu_safe +
-    y_one_lgamma;
-
-  return -arma::accu(logp);
+  return poisson_negloglik_inplace(
+    mu,
+    y,
+    y_one_lgamma,
+    workspace
+  );
 }
 
-inline double nb_negloglik(
+inline double nb_negloglik_inplace(
     const arma::vec& mu,
     const arma::vec& y,
     double dispersion,
     const arma::vec& y_one_lgamma,
-    double poisson_fallback_eps
+    double poisson_fallback_eps,
+    NegloglikWorkspace& workspace
 ) {
-  arma::vec mu_safe =
-    arma::clamp(mu, MU_MIN_CAP, MU_MAX_CAP);
+  workspace.ensure_size(mu.n_elem);
+
+  workspace.mu_safe =
+    mu;
+
+  workspace.mu_safe.clamp(
+    MU_MIN_CAP,
+    MU_MAX_CAP
+  );
 
   if (dispersion <= poisson_fallback_eps) {
-    return poisson_negloglik(
-      mu_safe,
+    return poisson_negloglik_inplace(
+      workspace.mu_safe,
       y,
-      y_one_lgamma
+      y_one_lgamma,
+      workspace
     );
   }
 
@@ -49,23 +137,65 @@ inline double nb_negloglik(
   const double a = dispersion;
   const double one_over_a = 1.0 / a;
 
-  arma::vec a_mu =
-    a * mu_safe;
+  workspace.a_mu =
+    workspace.mu_safe;
 
-  arma::vec log_a_mu =
-    arma::log(a_mu);
+  workspace.a_mu *=
+    a;
 
-  arma::vec log_one_plus_a_mu =
-    arma::log1p(a_mu);
+  workspace.log_a_mu =
+    arma::log(workspace.a_mu);
 
-  arma::vec logp =
-    y % (log_a_mu - log_one_plus_a_mu) -
-    one_over_a * log_one_plus_a_mu +
-    arma::lgamma(y + one_over_a) +
-    y_one_lgamma -
+  workspace.log_one_plus_a_mu =
+    arma::log1p(workspace.a_mu);
+
+  workspace.logp =
+    workspace.log_a_mu;
+
+  workspace.logp -=
+    workspace.log_one_plus_a_mu;
+
+  workspace.logp %=
+    y;
+
+  workspace.log_one_plus_a_mu *=
+    one_over_a;
+
+  workspace.logp -=
+    workspace.log_one_plus_a_mu;
+
+  workspace.gamma_work =
+    arma::lgamma(y + one_over_a);
+
+  workspace.gamma_work +=
+    y_one_lgamma;
+
+  workspace.gamma_work -=
     std::lgamma(one_over_a);
 
-  return -arma::accu(logp);
+  workspace.logp +=
+    workspace.gamma_work;
+
+  return -arma::accu(workspace.logp);
+}
+
+inline double nb_negloglik(
+    const arma::vec& mu,
+    const arma::vec& y,
+    double dispersion,
+    const arma::vec& y_one_lgamma,
+    double poisson_fallback_eps
+) {
+  NegloglikWorkspace workspace(mu.n_elem);
+
+  return nb_negloglik_inplace(
+    mu,
+    y,
+    dispersion,
+    y_one_lgamma,
+    poisson_fallback_eps,
+    workspace
+  );
 }
 
 struct FixedDispersionNegloglikData
@@ -98,6 +228,34 @@ struct FixedDispersionNegloglikData
     ),
     gamma_constant()
   {
+    refresh(
+      family_,
+      dispersion_,
+      poisson_fallback_eps
+    );
+  }
+
+  void refresh(
+      EnumFamily family_new,
+      double dispersion_new,
+      double poisson_fallback_eps
+  ) {
+    family =
+      family_new;
+
+    dispersion =
+      dispersion_new;
+
+    one_over_dispersion =
+      0.0;
+
+    lgamma_one_over_dispersion =
+      0.0;
+
+    use_poisson =
+      family_new == POISSON ||
+      dispersion_new <= poisson_fallback_eps;
+
     if (family == NEGATIVE_BINOMIAL && !use_poisson) {
       if (dispersion <= 0.0) {
         return;
@@ -109,9 +267,11 @@ struct FixedDispersionNegloglikData
       lgamma_one_over_dispersion =
         std::lgamma(one_over_dispersion);
 
-      gamma_constant.set_size(y_.n_elem);
+      if (gamma_constant.n_elem != y->n_elem) {
+        gamma_constant.set_size(y->n_elem);
+      }
 
-      for (arma::uword i = 0; i < y_.n_elem; ++i) {
+      for (arma::uword i = 0; i < y->n_elem; ++i) {
         gamma_constant[i] =
           std::lgamma((*y)[i] + one_over_dispersion) +
           (*y_one_lgamma)[i] -
@@ -121,15 +281,17 @@ struct FixedDispersionNegloglikData
   }
 };
 
-inline double fixed_dispersion_negloglik(
+inline double fixed_dispersion_negloglik_inplace(
     const arma::vec& mu,
-    const FixedDispersionNegloglikData& data
+    const FixedDispersionNegloglikData& data,
+    NegloglikWorkspace& workspace
 ) {
   if (data.use_poisson) {
-    return poisson_negloglik(
+    return poisson_negloglik_inplace(
       mu,
       *(data.y),
-      *(data.y_one_lgamma)
+      *(data.y_one_lgamma),
+      workspace
     );
   }
 
@@ -140,24 +302,60 @@ inline double fixed_dispersion_negloglik(
   const double a =
     data.dispersion;
 
-  arma::vec mu_safe =
-    arma::clamp(mu, MU_MIN_CAP, MU_MAX_CAP);
+  workspace.ensure_size(mu.n_elem);
 
-  arma::vec a_mu =
-    a * mu_safe;
+  workspace.mu_safe =
+    mu;
 
-  arma::vec log_a_mu =
-    arma::log(a_mu);
+  workspace.mu_safe.clamp(
+    MU_MIN_CAP,
+    MU_MAX_CAP
+  );
 
-  arma::vec log_one_plus_a_mu =
-    arma::log1p(a_mu);
+  workspace.a_mu =
+    workspace.mu_safe;
 
-  arma::vec logp =
-    (*(data.y)) % (log_a_mu - log_one_plus_a_mu) -
-    data.one_over_dispersion * log_one_plus_a_mu +
+  workspace.a_mu *=
+    a;
+
+  workspace.log_a_mu =
+    arma::log(workspace.a_mu);
+
+  workspace.log_one_plus_a_mu =
+    arma::log1p(workspace.a_mu);
+
+  workspace.logp =
+    workspace.log_a_mu;
+
+  workspace.logp -=
+    workspace.log_one_plus_a_mu;
+
+  workspace.logp %=
+    *(data.y);
+
+  workspace.log_one_plus_a_mu *=
+    data.one_over_dispersion;
+
+  workspace.logp -=
+    workspace.log_one_plus_a_mu;
+
+  workspace.logp +=
     data.gamma_constant;
 
-  return -arma::accu(logp);
+  return -arma::accu(workspace.logp);
+}
+
+inline double fixed_dispersion_negloglik(
+    const arma::vec& mu,
+    const FixedDispersionNegloglikData& data
+) {
+  NegloglikWorkspace workspace(mu.n_elem);
+
+  return fixed_dispersion_negloglik_inplace(
+    mu,
+    data,
+    workspace
+  );
 }
 
 inline double negloglik(
@@ -268,7 +466,8 @@ inline arma::vec gradient_eta(
     );
 }
 
-inline arma::vec gradient_beta(
+inline void gradient_beta(
+    arma::vec& grad_beta,
     const arma::mat& X,
     const arma::vec& y,
     const arma::vec& eta,
@@ -278,7 +477,7 @@ inline arma::vec gradient_beta(
     EnumLinkFunc link_func,
     double dispersion
 ) {
-  return X.t() * gradient_eta(
+  grad_beta = X.t() * gradient_eta(
       y,
       eta,
       mu,

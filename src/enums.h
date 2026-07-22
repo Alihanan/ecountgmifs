@@ -14,22 +14,26 @@ inline EnumStateTrackStrategy as_track_strategy(int x)
   }
 }
 
-inline EnumLinkFunc as_link_func(uint32_t x)
+inline const char* termination_status_name(
+    EnumTerminationStatus status
+) noexcept
 {
-  switch (x) {
-  case 0: return LOG_LINK;
-  case 1: return SOFTPLUS_LINK;
-  default:
-    Rcpp::stop("invalid link function");
-  }
-}
+  switch (status) {
+  case RUNNING:
+    return "RUNNING";
 
-inline EnumFamily as_family(uint32_t x)
-{
-  switch (x) {
-  case 0: return NEGATIVE_BINOMIAL;
-  case 1: return POISSON;
-  default:
-    Rcpp::stop("invalid family");
+  case CONVERGED:
+    return "CONVERGED";
+
+  case ITERATION_LIMIT_REACHED:
+    return "ITERATION_LIMIT_REACHED";
+
+  case EPSILON_MIN_REACHED:
+    return "EPSILON_MIN_REACHED";
+
+  case FAILED:
+    return "FAILED";
   }
+
+  return "UNKNOWN_TERMINATION_STATUS";
 }

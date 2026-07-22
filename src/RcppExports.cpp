@@ -36,8 +36,8 @@ BEGIN_RCPP
 END_RCPP
 }
 // ecountgmifs_cpp
-Rcpp::List ecountgmifs_cpp(arma::mat X, arma::vec y, arma::mat w, arma::vec offset, arma::vec yorig, arma::mat Xtest, arma::vec ytest, arma::mat wtest, arma::vec offsettest, const arma::vec& weight_vec, double enet_alpha, double epsilon_start, double epsilon_max, double epsilon_min_tol, double tol, uint32_t iteration_max, uint32_t family, uint32_t linkfunc_int, double nlopt_optim_reltol, double loglik_reltol_cutoff, double nb_poisson_fallback_eps, bool verbose, bool is_fixed_disp, double fixed_disp_value, bool include_data, int state_track_strategy, uint64_t state_track_freq, Rcpp::Nullable<Rcpp::List> criteria);
-RcppExport SEXP _ecountgmifs_ecountgmifs_cpp(SEXP XSEXP, SEXP ySEXP, SEXP wSEXP, SEXP offsetSEXP, SEXP yorigSEXP, SEXP XtestSEXP, SEXP ytestSEXP, SEXP wtestSEXP, SEXP offsettestSEXP, SEXP weight_vecSEXP, SEXP enet_alphaSEXP, SEXP epsilon_startSEXP, SEXP epsilon_maxSEXP, SEXP epsilon_min_tolSEXP, SEXP tolSEXP, SEXP iteration_maxSEXP, SEXP familySEXP, SEXP linkfunc_intSEXP, SEXP nlopt_optim_reltolSEXP, SEXP loglik_reltol_cutoffSEXP, SEXP nb_poisson_fallback_epsSEXP, SEXP verboseSEXP, SEXP is_fixed_dispSEXP, SEXP fixed_disp_valueSEXP, SEXP include_dataSEXP, SEXP state_track_strategySEXP, SEXP state_track_freqSEXP, SEXP criteriaSEXP) {
+Rcpp::List ecountgmifs_cpp(arma::mat X, arma::vec y, arma::mat w, arma::vec offset, arma::vec yorig, arma::mat Xtest, arma::vec ytest, arma::mat wtest, arma::vec offsettest, const arma::vec& weight_vec, double enet_alpha, double epsilon_start, double epsilon_max, double epsilon_min_tol, double tol, uint32_t iteration_max, uint32_t family, uint32_t linkfunc_int, double nlopt_optim_reltol, double loglik_reltol_cutoff, double nb_poisson_fallback_eps, double enet_abs_tol, double enet_rel_tol, uint32_t enet_max_iter, bool verbose, bool is_fixed_disp, double fixed_disp_value, bool include_data, int state_track_strategy, uint64_t state_track_freq, Rcpp::Nullable<Rcpp::List> criteria);
+RcppExport SEXP _ecountgmifs_ecountgmifs_cpp(SEXP XSEXP, SEXP ySEXP, SEXP wSEXP, SEXP offsetSEXP, SEXP yorigSEXP, SEXP XtestSEXP, SEXP ytestSEXP, SEXP wtestSEXP, SEXP offsettestSEXP, SEXP weight_vecSEXP, SEXP enet_alphaSEXP, SEXP epsilon_startSEXP, SEXP epsilon_maxSEXP, SEXP epsilon_min_tolSEXP, SEXP tolSEXP, SEXP iteration_maxSEXP, SEXP familySEXP, SEXP linkfunc_intSEXP, SEXP nlopt_optim_reltolSEXP, SEXP loglik_reltol_cutoffSEXP, SEXP nb_poisson_fallback_epsSEXP, SEXP enet_abs_tolSEXP, SEXP enet_rel_tolSEXP, SEXP enet_max_iterSEXP, SEXP verboseSEXP, SEXP is_fixed_dispSEXP, SEXP fixed_disp_valueSEXP, SEXP include_dataSEXP, SEXP state_track_strategySEXP, SEXP state_track_freqSEXP, SEXP criteriaSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
@@ -62,6 +62,9 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< double >::type nlopt_optim_reltol(nlopt_optim_reltolSEXP);
     Rcpp::traits::input_parameter< double >::type loglik_reltol_cutoff(loglik_reltol_cutoffSEXP);
     Rcpp::traits::input_parameter< double >::type nb_poisson_fallback_eps(nb_poisson_fallback_epsSEXP);
+    Rcpp::traits::input_parameter< double >::type enet_abs_tol(enet_abs_tolSEXP);
+    Rcpp::traits::input_parameter< double >::type enet_rel_tol(enet_rel_tolSEXP);
+    Rcpp::traits::input_parameter< uint32_t >::type enet_max_iter(enet_max_iterSEXP);
     Rcpp::traits::input_parameter< bool >::type verbose(verboseSEXP);
     Rcpp::traits::input_parameter< bool >::type is_fixed_disp(is_fixed_dispSEXP);
     Rcpp::traits::input_parameter< double >::type fixed_disp_value(fixed_disp_valueSEXP);
@@ -69,14 +72,14 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< int >::type state_track_strategy(state_track_strategySEXP);
     Rcpp::traits::input_parameter< uint64_t >::type state_track_freq(state_track_freqSEXP);
     Rcpp::traits::input_parameter< Rcpp::Nullable<Rcpp::List> >::type criteria(criteriaSEXP);
-    rcpp_result_gen = Rcpp::wrap(ecountgmifs_cpp(X, y, w, offset, yorig, Xtest, ytest, wtest, offsettest, weight_vec, enet_alpha, epsilon_start, epsilon_max, epsilon_min_tol, tol, iteration_max, family, linkfunc_int, nlopt_optim_reltol, loglik_reltol_cutoff, nb_poisson_fallback_eps, verbose, is_fixed_disp, fixed_disp_value, include_data, state_track_strategy, state_track_freq, criteria));
+    rcpp_result_gen = Rcpp::wrap(ecountgmifs_cpp(X, y, w, offset, yorig, Xtest, ytest, wtest, offsettest, weight_vec, enet_alpha, epsilon_start, epsilon_max, epsilon_min_tol, tol, iteration_max, family, linkfunc_int, nlopt_optim_reltol, loglik_reltol_cutoff, nb_poisson_fallback_eps, enet_abs_tol, enet_rel_tol, enet_max_iter, verbose, is_fixed_disp, fixed_disp_value, include_data, state_track_strategy, state_track_freq, criteria));
     return rcpp_result_gen;
 END_RCPP
 }
 
 static const R_CallMethodDef CallEntries[] = {
     {"_ecountgmifs_ecountgmifs_call_context_criterion", (DL_FUNC) &_ecountgmifs_ecountgmifs_call_context_criterion, 14},
-    {"_ecountgmifs_ecountgmifs_cpp", (DL_FUNC) &_ecountgmifs_ecountgmifs_cpp, 28},
+    {"_ecountgmifs_ecountgmifs_cpp", (DL_FUNC) &_ecountgmifs_ecountgmifs_cpp, 31},
     {NULL, NULL, 0}
 };
 

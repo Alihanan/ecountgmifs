@@ -32,22 +32,18 @@ static inline double g_at_weight(const arma::vec& c, double alpha, double lambda
 
 struct ElasticNetWeightWorkspace
 {
+  const arma::vec* c;
   arma::vec abs_c;
   arma::vec sign_c;
-  arma::vec threshold_work;
-  arma::vec denominator_work;
-  arma::vec weighted_abs_work;
-  arma::vec weighted_square_work;
+  bool gradient_is_zero;
 
   explicit ElasticNetWeightWorkspace(
       arma::uword p = 0
   ) :
+    c(nullptr),
     abs_c(p),
     sign_c(p),
-    threshold_work(p),
-    denominator_work(p),
-    weighted_abs_work(p),
-    weighted_square_work(p)
+    gradient_is_zero(true)
   {}
 
   void ensure_size(
@@ -60,29 +56,20 @@ struct ElasticNetWeightWorkspace
     if (sign_c.n_elem != p) {
       sign_c.set_size(p);
     }
-
-    if (threshold_work.n_elem != p) {
-      threshold_work.set_size(p);
-    }
-
-    if (denominator_work.n_elem != p) {
-      denominator_work.set_size(p);
-    }
-
-    if (weighted_abs_work.n_elem != p) {
-      weighted_abs_work.set_size(p);
-    }
-
-    if (weighted_square_work.n_elem != p) {
-      weighted_square_work.set_size(p);
-    }
   }
 };
 
-static inline void prepare_elastic_net_weight_workspace(
+static inline void prepare_elastic_net_gradient(
     const arma::vec& c,
     ElasticNetWeightWorkspace& workspace
 ) {
+  if (!c.is_finite()) {
+    Rcpp::stop("value of 'c' must contain only finite values");
+  }
+
+  workspace.c =
+    &c;
+
   workspace.ensure_size(c.n_elem);
 
   workspace.abs_c =
@@ -90,6 +77,9 @@ static inline void prepare_elastic_net_weight_workspace(
 
   workspace.sign_c =
     arma::sign(c);
+
+  workspace.gradient_is_zero =
+    c.is_zero();
 }
 
 static inline void x_of_lambda_weight_inplace(
@@ -100,41 +90,22 @@ static inline void x_of_lambda_weight_inplace(
     ElasticNetWeightWorkspace& workspace,
     arma::vec& x_out
 ) {
+  (void) workspace;
+
   if (x_out.n_elem != weight_vec.n_elem) {
     x_out.set_size(weight_vec.n_elem);
   }
 
-  workspace.threshold_work =
-    weight_vec;
-
-  workspace.threshold_work *=
-    lambda * alpha;
-
   x_out =
-    prepared.abs_c;
-
-  x_out -=
-    workspace.threshold_work;
-
-  x_out.clamp(
-    0.0,
-    arma::datum::inf
-  );
-
-  x_out %=
-    prepared.sign_c;
-
-  workspace.denominator_work =
-    weight_vec;
-
-  workspace.denominator_work *=
-    2.0 * lambda * (1.0 - alpha);
-
-  x_out /=
-    workspace.denominator_work;
-
-  x_out *=
-    -1.0;
+    -prepared.sign_c %
+    arma::clamp(
+      prepared.abs_c - lambda * alpha * weight_vec,
+      0.0,
+      arma::datum::inf
+    ) /
+    (
+      2.0 * lambda * (1.0 - alpha) * weight_vec
+    );
 }
 
 static inline double elastic_net_g_weight_inplace(
@@ -143,25 +114,17 @@ static inline double elastic_net_g_weight_inplace(
     double alpha,
     ElasticNetWeightWorkspace& workspace
 ) {
-  workspace.weighted_abs_work =
-    arma::abs(x);
+  (void) workspace;
 
-  workspace.weighted_abs_work %=
-    weight_vec;
-
-  workspace.weighted_square_work =
-    arma::square(x);
-
-  workspace.weighted_square_work %=
-    weight_vec;
-
-  const double l1 =
-    arma::accu(workspace.weighted_abs_work);
-
-  const double l2 =
-    arma::accu(workspace.weighted_square_work);
-
-  return alpha * l1 + (1.0 - alpha) * l2;
+  return
+    alpha *
+    arma::accu(
+      weight_vec % arma::abs(x)
+    ) +
+    (1.0 - alpha) *
+    arma::accu(
+      weight_vec % arma::square(x)
+    );
 }
 
 static inline double g_at_weight_inplace(
@@ -230,6 +193,38 @@ inline arma::vec solve_lasso_1D_weight(
 
   return x;
 }
+
+inline void solve_lasso_1D_weight_prepared_inplace(
+    const arma::vec& weight_vec,
+    double epsilon,
+    const ElasticNetWeightWorkspace& workspace,
+    arma::vec& x_out
+) {
+  if (x_out.n_elem != weight_vec.n_elem) {
+    x_out.set_size(weight_vec.n_elem);
+  }
+
+  x_out.zeros();
+
+  if (epsilon == 0.0 || workspace.gradient_is_zero) {
+    return;
+  }
+
+  x_out =
+    workspace.abs_c / weight_vec;
+
+  const arma::uword j =
+    x_out.index_max();
+
+  if (x_out[j] == 0.0) {
+    x_out.zeros();
+    return;
+  }
+
+  x_out.zeros();
+  x_out[j] =
+    -epsilon * signum((*(workspace.c))[j]) / weight_vec[j];
+}
 // -----------------------------------------------------------------------------
 // Weighted ridge analytical solution
 //
@@ -282,9 +277,41 @@ inline arma::vec solve_ridge_1D_weight(
   return x;
 }
 
-// Solve min c^T x s.t. alpha||x||_1 + (1-alpha)||x||_2^2 <= eps
-inline void solve_elastic_net_1D_weight_inplace(
-    const arma::vec& c,
+inline void solve_ridge_1D_weight_prepared_inplace(
+    const arma::vec& weight_vec,
+    double eps,
+    const ElasticNetWeightWorkspace& workspace,
+    arma::vec& x_out
+) {
+  if (x_out.n_elem != weight_vec.n_elem) {
+    x_out.set_size(weight_vec.n_elem);
+  }
+
+  x_out.zeros();
+
+  if (eps == 0.0 || workspace.gradient_is_zero) {
+    return;
+  }
+
+  x_out =
+    (*(workspace.c)) / weight_vec;
+
+  const double denom_sq =
+    arma::dot(*(workspace.c), x_out);
+
+  if (denom_sq <= 0.0) {
+    x_out.zeros();
+    return;
+  }
+
+  const double denom =
+    std::sqrt(denom_sq);
+
+  x_out *=
+    -std::sqrt(eps) / denom;
+}
+
+inline void solve_elastic_net_1D_weight_prepared_inplace(
     const arma::vec& weight_vec,
     double alpha,
     double eps,
@@ -296,7 +323,11 @@ inline void solve_elastic_net_1D_weight_inplace(
     arma::vec& x_out
 )
 {
-  if (c.n_elem != weight_vec.n_elem) {
+  if (workspace.c == nullptr) {
+    Rcpp::stop("elastic-net gradient workspace is not prepared");
+  }
+
+  if (workspace.c->n_elem != weight_vec.n_elem) {
     Rcpp::stop("c and weight_vec must have the same length.");
   }
 
@@ -308,58 +339,36 @@ inline void solve_elastic_net_1D_weight_inplace(
     Rcpp::stop("alpha must be in [0, 1].");
   }
 
-  if (arma::any(weight_vec <= 0.0)) {
-    Rcpp::stop("All weights must be positive.");
+  workspace.ensure_size(weight_vec.n_elem);
+
+  if (x_out.n_elem != weight_vec.n_elem) {
+    x_out.set_size(weight_vec.n_elem);
   }
 
-  if (!c.is_finite()) {
-    Rcpp::stop("value of 'c' must contain only finite values");
-  }
-
-  if (!weight_vec.is_finite()) {
-    Rcpp::stop("value of 'weight_vec' must contain only finite values");
-  }
-
-  workspace.ensure_size(c.n_elem);
-
-  if (x_out.n_elem != c.n_elem) {
-    x_out.set_size(c.n_elem);
-  }
-
-  if (eps == 0.0) {
-    x_out.zeros();
-    return;
-  }
-
-  if (arma::norm(c, 2) == 0.0) {
+  if (eps == 0.0 || workspace.gradient_is_zero) {
     x_out.zeros();
     return;
   }
 
   if (alpha == 1.0) {
-    x_out =
-      solve_lasso_1D_weight(
-      c,
+    solve_lasso_1D_weight_prepared_inplace(
       weight_vec,
-      eps
+      eps,
+      workspace,
+      x_out
     );
     return;
   }
 
   if (alpha == 0.0) {
-    x_out =
-      solve_ridge_1D_weight(
-      c,
+    solve_ridge_1D_weight_prepared_inplace(
       weight_vec,
-      eps
+      eps,
+      workspace,
+      x_out
     );
     return;
   }
-
-  prepare_elastic_net_weight_workspace(
-    c,
-    workspace
-  );
 
   const double min_lambda = 1e-16;
 
@@ -498,11 +507,59 @@ inline void solve_elastic_net_1D_weight_inplace(
       lambda_hi = lambda_mid;
     }
   }
-  x_of_lambda_weight_inplace(
+}
+
+// Solve min c^T x s.t. alpha||x||_1 + (1-alpha)||x||_2^2 <= eps
+inline void solve_elastic_net_1D_weight_inplace(
+    const arma::vec& c,
+    const arma::vec& weight_vec,
+    double alpha,
+    double eps,
+    double abs_tol,
+    double rel_tol,
+    uint32_t max_iter,
+    bool verbose,
+    ElasticNetWeightWorkspace& workspace,
+    arma::vec& x_out
+)
+{
+  if (c.n_elem != weight_vec.n_elem) {
+    Rcpp::stop("c and weight_vec must have the same length.");
+  }
+
+  if (eps < 0.0) {
+    Rcpp::stop("eps must be non-negative.");
+  }
+
+  if (alpha < 0.0 || alpha > 1.0) {
+    Rcpp::stop("alpha must be in [0, 1].");
+  }
+
+  if (arma::any(weight_vec <= 0.0)) {
+    Rcpp::stop("All weights must be positive.");
+  }
+
+  if (!c.is_finite()) {
+    Rcpp::stop("value of 'c' must contain only finite values");
+  }
+
+  if (!weight_vec.is_finite()) {
+    Rcpp::stop("value of 'weight_vec' must contain only finite values");
+  }
+
+  prepare_elastic_net_gradient(
+    c,
+    workspace
+  );
+
+  solve_elastic_net_1D_weight_prepared_inplace(
     weight_vec,
     alpha,
-    lambda_hi,
-    workspace,
+    eps,
+    abs_tol,
+    rel_tol,
+    max_iter,
+    verbose,
     workspace,
     x_out
   );

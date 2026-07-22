@@ -13,6 +13,9 @@ ecountgmifs.control(
   nlopt.optim.reltol = tol,
   loglik.reltol.cutoff = 0.25,
   nb.poisson.fallback.eps = 1e-08,
+  enet.abs.tol = 1e-10,
+  enet.rel.tol = 1e-06,
+  enet.max.iter = 99L,
   state.track.strategy = c("all.iteration", "active.set.change", "every.k.iteration",
     "none"),
   state.track.freq = 10
@@ -40,6 +43,15 @@ to the pseudo-\eqn{R^2} threshold used in the accompanying research paper.}
 \item{nb.poisson.fallback.eps}{numeric. Non-negative dispersion threshold
 below which the negative-binomial likelihood is evaluated using the
 Poisson likelihood for numerical stability.}
+
+\item{enet.abs.tol}{numeric. Positive absolute tolerance used by the
+one-dimensional weighted elastic-net lambda bracketing/bisection solver.}
+
+\item{enet.rel.tol}{numeric. Non-negative relative tolerance used by the
+one-dimensional weighted elastic-net lambda bracketing/bisection solver.}
+
+\item{enet.max.iter}{integer. Maximum number of bisection iterations used by
+the one-dimensional weighted elastic-net lambda solver.}
 
 \item{state.track.strategy}{character. Strategy used to track the algorithm
 state along the stagewise path. The tracked state may include quantities

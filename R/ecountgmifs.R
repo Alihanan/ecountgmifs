@@ -225,6 +225,24 @@ ecountgmifs <- function(
     "none" = 3L
   )
 
+  if (is.null(control$enet.abs.tol) ||
+      is.null(control$enet.rel.tol) ||
+      is.null(control$enet.max.iter)) {
+    control.defaults <- ecountgmifs.control()
+
+    if (is.null(control$enet.abs.tol)) {
+      control$enet.abs.tol <- control.defaults$enet.abs.tol
+    }
+
+    if (is.null(control$enet.rel.tol)) {
+      control$enet.rel.tol <- control.defaults$enet.rel.tol
+    }
+
+    if (is.null(control$enet.max.iter)) {
+      control$enet.max.iter <- control.defaults$enet.max.iter
+    }
+  }
+
   family = match.arg(family)
   family.int <- switch(
     family,
@@ -264,6 +282,9 @@ ecountgmifs <- function(
                   nlopt_optim_reltol = control$nlopt.optim.reltol,
                   loglik_reltol_cutoff = control$loglik.reltol.cutoff,
                   nb_poisson_fallback_eps = control$nb.poisson.fallback.eps,
+                  enet_abs_tol = control$enet.abs.tol,
+                  enet_rel_tol = control$enet.rel.tol,
+                  enet_max_iter = control$enet.max.iter,
                   is_fixed_disp = fixed.dispersion,
                   fixed_disp_value = fixed.dispersion.value,
                   include_data = include.data,

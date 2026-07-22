@@ -125,6 +125,9 @@ double ecountgmifs_call_context_criterion(
         1e-8,                // nlopt_optim_reltol
         0.0,                 // loglik_reltol_cutoff / negloglik cutoff if not renamed yet
         1e-8,                // nb_poisson_fallback_eps
+        1e-10,               // enet_abs_tol
+        1e-6,                // enet_rel_tol
+        99,                  // enet_max_iter
         false,               // fixed_dispersion
         0.0,                 // fixed_dispersion_value
         NO_STATE_TRACKING,   // state_track_strategy

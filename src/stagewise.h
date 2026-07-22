@@ -3,6 +3,7 @@
 #include <RcppArmadillo.h>
 
 #include <cmath>
+#include <cstdint>
 #include <iomanip>
 #include <limits>
 #include <string>
@@ -38,7 +39,7 @@
 
 inline bool step_is_zero(
     const arma::vec& step,
-    double tol
+    double /* tol */
 ) {
   if (step.n_elem == 0) {
     return true;
@@ -48,7 +49,28 @@ inline bool step_is_zero(
     Rcpp::stop("stagewise update contains non-finite values");
   }
 
-  return arma::norm(step, 2) <= tol;
+  return step.is_zero();
+}
+
+inline void ecountgmifs_update_running_average(
+    double current_seconds,
+    std::uint64_t count,
+    double& average
+) {
+  average +=
+    (current_seconds - average) /
+    static_cast<double>(count);
+}
+
+inline void ecountgmifs_print_timing(
+    const char* label,
+    double average
+) {
+  Rprintf(
+    "[ecountgmifs] %s: %.6f s\n",
+    label,
+    average
+  );
 }
 
 inline const char* ecountgmifs_delta_status(
@@ -102,6 +124,108 @@ inline void ecountgmifs_print_stop_header(
 inline void ecountgmifs_print_blank_line()
 {
   Rcpp::Rcout << "\n";
+}
+
+inline void ecountgmifs_print_active_beta_fs_change(
+    const arma::vec& beta_old,
+    const arma::vec& beta_new,
+    std::uint64_t iteration
+) {
+  if (beta_old.n_elem != beta_new.n_elem) {
+    Rcpp::stop(
+      "ecountgmifs_print_active_beta_fs_change(): incompatible beta size"
+    );
+  }
+
+  Rprintf(
+    "FS beta update [%llu]:\n",
+    static_cast<unsigned long long>(iteration)
+  );
+
+  for (arma::uword i = 0; i < beta_old.n_elem; ++i) {
+    const double old_value =
+      beta_old[i];
+
+    const double new_value =
+      beta_new[i];
+
+    const double fs_change =
+      new_value - old_value;
+
+    if (old_value == 0.0 &&
+        fs_change == 0.0 &&
+        new_value == 0.0) {
+      continue;
+    }
+
+    Rprintf(
+      "[%llu]: %.17g + %.17g = %.17g\n",
+      static_cast<unsigned long long>(i),
+      old_value,
+      fs_change,
+      new_value
+    );
+  }
+}
+
+inline void ecountgmifs_print_parameter_update(
+    const arma::vec& beta_old,
+    const arma::vec& beta_new,
+    double theta_intercept_old,
+    double theta_intercept_new,
+    double dispersion_old,
+    double dispersion_new,
+    std::uint64_t iteration
+) {
+  if (beta_old.n_elem != beta_new.n_elem) {
+    Rcpp::stop(
+      "ecountgmifs_print_parameter_update(): incompatible beta size"
+    );
+  }
+
+  Rprintf(
+    "FS parameter update [%llu]:\n",
+    static_cast<unsigned long long>(iteration)
+  );
+
+  for (arma::uword i = 0; i < beta_old.n_elem; ++i) {
+    const double old_value =
+      beta_old[i];
+
+    const double new_value =
+      beta_new[i];
+
+    const double beta_change =
+      new_value - old_value;
+
+    if (old_value == 0.0 &&
+        beta_change == 0.0 &&
+        new_value == 0.0) {
+      continue;
+    }
+
+    Rprintf(
+      "[%llu]: %.17g + %.17g = %.17g\n",
+      static_cast<unsigned long long>(i),
+      old_value,
+      beta_change,
+      new_value
+    );
+  }
+
+  Rprintf(
+    "theta[0] (intercept): %.17g + %.17g = %.17g\n",
+    theta_intercept_old,
+    theta_intercept_new - theta_intercept_old,
+    theta_intercept_new
+  );
+
+  Rprintf(
+    "dispersion: %.17g + %.17g = %.17g\n",
+    dispersion_old,
+    dispersion_new - dispersion_old,
+    dispersion_new
+  );
 }
 
 template <typename T>
@@ -172,19 +296,17 @@ inline void ecountgmifs_verbose_stop(
 
 inline void compute_beta_step_inplace(
     EcountgmifsContextInternal& ctx,
-    const arma::vec& grad_beta,
     double epsilon,
     ElasticNetWeightWorkspace& enet_workspace,
     arma::vec& beta_step_out
 ) {
-  solve_elastic_net_1D_weight_inplace(
-    grad_beta,
+  solve_elastic_net_1D_weight_prepared_inplace(
     ctx.input.api.weight_vec,
     ctx.input.api.enet_alpha,
     epsilon,
-    ctx.control.api.tol,
-    1e-6,
-    99,
+    ctx.control.api.enet_abs_tol,
+    ctx.control.api.enet_rel_tol,
+    ctx.control.api.enet_max_iter,
     false,
     enet_workspace,
     beta_step_out
@@ -198,6 +320,7 @@ struct BetaTrialWorkspace
   arma::vec xbeta_work;
   arma::vec eta_work;
   arma::vec mu_work;
+  NegloglikWorkspace likelihood_workspace;
 
   explicit BetaTrialWorkspace(
       const EcountgmifsContextInternal& ctx
@@ -206,7 +329,8 @@ struct BetaTrialWorkspace
     beta_candidate(ctx.state.api.beta.n_elem),
     xbeta_work(ctx.input.api.X.n_rows),
     eta_work(ctx.input.api.X.n_rows),
-    mu_work(ctx.input.api.X.n_rows)
+    mu_work(ctx.input.api.X.n_rows),
+    likelihood_workspace(ctx.input.api.X.n_rows)
   {}
 };
 
@@ -238,16 +362,17 @@ inline double evaluate_beta_trial_negloglik(
 
   return ctx.negloglik_from_mu_dispersion(
     workspace.mu_work,
-    ctx.state.api.dispersion
+    ctx.state.api.dispersion,
+    workspace.likelihood_workspace
   );
 }
 
 inline bool try_beta_step_with_halving(
     EcountgmifsContextInternal& ctx,
     const arma::vec& beta_old,
-    const arma::vec& grad_beta,
     double negloglik_old,
     ElasticNetWeightWorkspace& enet_workspace,
+    BetaTrialWorkspace& beta_trial_workspace,
     arma::vec& beta_step_out,
     uint64_t& halvings_out
 ) {
@@ -270,17 +395,15 @@ inline bool try_beta_step_with_halving(
 
   halvings_out = 0;
   ctx.ensure_accepted_linear_caches();
-  BetaTrialWorkspace workspace(ctx);
 
   while (true) {
-    if (ctx.state.api.epsilon <= ctx.control.api.epsilon_min) {
+    if (ctx.state.api.epsilon < ctx.control.api.epsilon_min) {
       beta_step_out.zeros(beta_old.n_elem);
       return false;
     }
 
     compute_beta_step_inplace(
       ctx,
-      grad_beta,
       ctx.state.api.epsilon,
       enet_workspace,
       beta_step_out
@@ -295,7 +418,7 @@ inline bool try_beta_step_with_halving(
         ctx,
         beta_old,
         beta_step_out,
-        workspace
+        beta_trial_workspace
       );
 
     /*
@@ -305,11 +428,11 @@ inline bool try_beta_step_with_halving(
      * Accept if the beta step does not worsen the minimized objective.
      */
     if (trial_negloglik <= negloglik_old) {
-      ctx.commit_beta_trial(
-        std::move(workspace.beta_candidate),
-        std::move(workspace.xbeta_work),
-        std::move(workspace.eta_work),
-        std::move(workspace.mu_work),
+      ctx.commit_beta_trial_swap(
+        beta_trial_workspace.beta_candidate,
+        beta_trial_workspace.xbeta_work,
+        beta_trial_workspace.eta_work,
+        beta_trial_workspace.mu_work,
         trial_negloglik
       );
       return true;
@@ -356,37 +479,58 @@ inline void fit_stagewise_path(
   double t_fs = 0.0;
   double t_aftertrack = 0.0;
   double t_beforetrack = 0.0;
-  auto t = std::chrono::steady_clock::now();
+  std::uint64_t timing_iteration_count = 0;
+
+  // Allocate once!
+  arma::vec beta_old;
+  arma::uword active_beta_old;
+  arma::vec grad_beta;
 
   ElasticNetWeightWorkspace enet_workspace(
     ctx.state.api.beta.n_elem
   );
+
+  BetaTrialWorkspace beta_trial_workspace(ctx);
 
   arma::vec beta_step(
     ctx.state.api.beta.n_elem,
     arma::fill::zeros
   );
 
+  auto iteration_transition_start =
+    std::chrono::steady_clock::now();
+
   for (uint64_t iter = 0;
        iter < ctx.control.api.iteration_max;
        ++iter) {
 
+    ++timing_iteration_count;
 
-    t_start += (std::chrono::duration<double>(
-      std::chrono::steady_clock::now() - t
-    ).count() - t_start) / (iter+1);
-    Rprintf("Duration at start of iteration step: %.6f s\n",t_start);
-    t = std::chrono::steady_clock::now();
-
+    auto phase_start =
+      iteration_transition_start;
     ctx.state.api.iteration = iter + 1;
+    ecountgmifs_update_running_average(
+      std::chrono::duration<double>(
+        std::chrono::steady_clock::now() - phase_start
+      ).count(),
+      timing_iteration_count,
+      t_start
+    );
+    ecountgmifs_print_timing(
+      "Duration at start of iteration step",
+      t_start
+    );
 
-    const arma::vec beta_old = ctx.state.api.beta;
+    phase_start =
+      std::chrono::steady_clock::now();
+    beta_old = ctx.state.api.beta;
     arma::vec theta_old;
     const double dispersion_old = ctx.state.api.dispersion;
     const double negloglik_old = ctx.state.api.negloglik;
     const double pseudo_r2_old = ctx.state.api.pseudo_r2;
 
-    arma::vec grad_beta =
+    // TODO repair
+    grad_beta =
       gradient_beta(
         ctx.input.api.X,
         ctx.input.api.y,
@@ -398,17 +542,23 @@ inline void fit_stagewise_path(
         ctx.state.api.dispersion
       );
 
-    t_grad += (std::chrono::duration<double>(
-      std::chrono::steady_clock::now() - t
-    ).count() - t_grad) / (iter+1);
-    Rprintf("Duration after gradient step: %.6f s\n",t_grad);
-    t = std::chrono::steady_clock::now();
+    ecountgmifs_update_running_average(
+      std::chrono::duration<double>(
+        std::chrono::steady_clock::now() - phase_start
+      ).count(),
+      timing_iteration_count,
+      t_grad
+    );
+    ecountgmifs_print_timing(
+      "Duration after gradient step",
+      t_grad
+    );
 
     if (ctx.control.api.verbose) {
       theta_old =
         ctx.state.api.theta;
 
-      const arma::uword active_beta_old =
+      active_beta_old =
         ecountgmifs_active_beta_count(
           beta_old,
           ctx.control.api.tol
@@ -451,18 +601,37 @@ inline void fit_stagewise_path(
 
     uint64_t beta_halvings = 0;
 
+    phase_start =
+      std::chrono::steady_clock::now();
+    prepare_elastic_net_gradient(
+      grad_beta,
+      enet_workspace
+    );
+
     const bool beta_step_accepted =
       try_beta_step_with_halving(
         ctx,
         beta_old,
-        grad_beta,
         negloglik_old,
         enet_workspace,
+        beta_trial_workspace,
         beta_step,
         beta_halvings
       );
 
     if (!beta_step_accepted) {
+      ecountgmifs_update_running_average(
+        std::chrono::duration<double>(
+          std::chrono::steady_clock::now() - phase_start
+        ).count(),
+        timing_iteration_count,
+        t_fs
+      );
+      ecountgmifs_print_timing(
+        "Duration after FS step",
+        t_fs
+      );
+
       ecountgmifs_verbose_stop(
         ctx,
         "beta_converged"
@@ -471,16 +640,28 @@ inline void fit_stagewise_path(
       return;
     }
 
-    t_fs += (std::chrono::duration<double>(
-      std::chrono::steady_clock::now() - t
-    ).count() - t_fs) / (iter+1);
-    Rprintf("Duration after FS step: %.6f s\n",t_fs);
-    t = std::chrono::steady_clock::now();
+    ecountgmifs_update_running_average(
+      std::chrono::duration<double>(
+        std::chrono::steady_clock::now() - phase_start
+      ).count(),
+      timing_iteration_count,
+      t_fs
+    );
+    ecountgmifs_print_timing(
+      "Duration after FS step",
+      t_fs
+    );
 
     const double negloglik_after_beta =
       ctx.state.api.negloglik;
 
     if (ctx.control.api.verbose) {
+      ecountgmifs_print_active_beta_fs_change(
+        beta_old,
+        ctx.state.api.beta,
+        ctx.state.api.iteration
+      );
+
       arma::vec weighted_grad =
         arma::abs(grad_beta) / ctx.input.api.weight_vec;
 
@@ -555,16 +736,24 @@ inline void fit_stagewise_path(
      * These optimizers commit their returned best values via ctx.set_theta()
      * and ctx.set_dispersion().
      */
+    phase_start =
+      std::chrono::steady_clock::now();
     opt.optimize_theta(ctx);
 
     const double negloglik_after_theta =
       ctx.state.api.negloglik;
 
-    t_theta += (std::chrono::duration<double>(
-      std::chrono::steady_clock::now() - t
-    ).count() - t_theta) / (iter+1);
-    Rprintf("Duration after theta step: %.6f s\n",t_theta);
-    t = std::chrono::steady_clock::now();
+    ecountgmifs_update_running_average(
+      std::chrono::duration<double>(
+        std::chrono::steady_clock::now() - phase_start
+      ).count(),
+      timing_iteration_count,
+      t_theta
+    );
+    ecountgmifs_print_timing(
+      "Duration after theta step",
+      t_theta
+    );
 
     if (ctx.control.api.verbose) {
       ecountgmifs_print_blank_line();
@@ -586,10 +775,36 @@ inline void fit_stagewise_path(
       );
     }
 
+    phase_start =
+      std::chrono::steady_clock::now();
     opt.optimize_dispersion(ctx);
 
     const double negloglik_after_dispersion =
       ctx.state.api.negloglik;
+
+    ecountgmifs_update_running_average(
+      std::chrono::duration<double>(
+        std::chrono::steady_clock::now() - phase_start
+      ).count(),
+      timing_iteration_count,
+      t_disp
+    );
+    ecountgmifs_print_timing(
+      "Duration after dispersion step",
+      t_disp
+    );
+
+    if (ctx.control.api.verbose) {
+      ecountgmifs_print_parameter_update(
+        beta_old,
+        ctx.state.api.beta,
+        theta_old[0],
+        ctx.state.api.theta[0],
+        dispersion_old,
+        ctx.state.api.dispersion,
+        ctx.state.api.iteration
+      );
+    }
 
     if (ctx.control.api.verbose) {
       ecountgmifs_print_blank_line();
@@ -613,12 +828,8 @@ inline void fit_stagewise_path(
       );
     }
 
-    t_disp += (std::chrono::duration<double>(
-      std::chrono::steady_clock::now() - t
-    ).count() - t_disp) / (iter+1);
-    Rprintf("Duration after dispersion step: %.6f s\n",t_disp);
-    t = std::chrono::steady_clock::now();
-
+    phase_start =
+      std::chrono::steady_clock::now();
     const double beta_diff =
       arma::norm(ctx.state.api.beta - beta_old, 2);
 
@@ -626,6 +837,52 @@ inline void fit_stagewise_path(
       std::abs(ctx.state.api.negloglik - negloglik_old);
 
     ctx.state.api.iteration = iter + 1;
+
+    /*
+     * Stop only when all main state changes are small.
+     *
+     * This requires both:
+     *   - objective movement below tol
+     *   - L2 movement in beta and theta below tol
+     *   - scalar dispersion movement below tol
+     */
+
+    /* TURNED OFF FOR NOW
+     * beta_diff < ctx.control.api.tol &&
+     theta_diff < ctx.control.api.tol &&
+     dispersion_diff < ctx.control.api.tol &&
+     */
+    const bool beta_stalled =
+      beta_diff <= ctx.control.api.epsilon_min;
+
+    const bool objective_stalled =
+      negloglik_diff < ctx.control.api.tol;
+
+    bool pseudo_r2_cutoff_reached = false;
+    double target_pseudo_r2 =
+      std::numeric_limits<double>::quiet_NaN();
+
+    if (ctx.control.api.loglik_reltol_cutoff > 0.0 &&
+        std::isfinite(ctx.state.api.pseudo_r2)) {
+
+      target_pseudo_r2 =
+        1.0 - ctx.control.api.loglik_reltol_cutoff;
+
+      pseudo_r2_cutoff_reached =
+        ctx.state.api.pseudo_r2 >= target_pseudo_r2;
+    }
+
+    ecountgmifs_update_running_average(
+      std::chrono::duration<double>(
+        std::chrono::steady_clock::now() - phase_start
+      ).count(),
+      timing_iteration_count,
+      t_beforetrack
+    );
+    ecountgmifs_print_timing(
+      "Duration before tracking step",
+      t_beforetrack
+    );
 
     if (ctx.control.api.verbose) {
       ecountgmifs_print_blank_line();
@@ -653,23 +910,6 @@ inline void fit_stagewise_path(
       );
     }
 
-    /*
-     * Stop only when all main state changes are small.
-     *
-     * This requires both:
-     *   - objective movement below tol
-     *   - L2 movement in beta and theta below tol
-     *   - scalar dispersion movement below tol
-     */
-
-    /* TURNED OFF FOR NOW
-     * beta_diff < ctx.control.api.tol &&
-     theta_diff < ctx.control.api.tol &&
-     dispersion_diff < ctx.control.api.tol &&
-     */
-    const bool beta_stalled =
-      beta_diff <= ctx.control.api.epsilon_min;
-
     if (beta_stalled) {
       ctx.set_message("beta_converged");
       if (ctx.control.api.verbose) {
@@ -695,9 +935,6 @@ inline void fit_stagewise_path(
 
       return;
     }
-
-    const bool objective_stalled =
-      negloglik_diff < ctx.control.api.tol;
 
     if (ctx.control.api.verbose) {
       const double theta_diff =
@@ -754,7 +991,20 @@ inline void fit_stagewise_path(
         );
       }
 
+      phase_start =
+        std::chrono::steady_clock::now();
       ctx.update_tracking();
+      ecountgmifs_update_running_average(
+        std::chrono::duration<double>(
+          std::chrono::steady_clock::now() - phase_start
+        ).count(),
+        timing_iteration_count,
+        t_aftertrack
+      );
+      ecountgmifs_print_timing(
+        "Duration after tracking step",
+        t_aftertrack
+      );
       return;
     }
 
@@ -765,13 +1015,7 @@ inline void fit_stagewise_path(
      * this stops when the remaining gap to saturated fit is small enough
      * relative to the initial/nonpenalized gap.
      */
-    if (ctx.control.api.loglik_reltol_cutoff > 0.0 &&
-        std::isfinite(ctx.state.api.pseudo_r2)) {
-
-      const double target_pseudo_r2 =
-        1.0 - ctx.control.api.loglik_reltol_cutoff;
-
-      if (ctx.state.api.pseudo_r2 >= target_pseudo_r2) {
+    if (pseudo_r2_cutoff_reached) {
         ctx.set_message("pseudo_r2_cutoff");
 
         if (ctx.control.api.verbose) {
@@ -786,22 +1030,26 @@ inline void fit_stagewise_path(
         }
 
         return;
-      }
     }
 
-    t_beforetrack += (std::chrono::duration<double>(
-      std::chrono::steady_clock::now() - t
-    ).count() - t_beforetrack) / (iter+1);
-    Rprintf("Duration before tracking step: %.6f s\n",t_beforetrack);
-    t = std::chrono::steady_clock::now();
-
     // Save state if not break
+    phase_start =
+      std::chrono::steady_clock::now();
     ctx.update_tracking();
 
-    t_aftertrack += (std::chrono::duration<double>(
-      std::chrono::steady_clock::now() - t
-    ).count() - t_aftertrack) / (iter+1);
-    Rprintf("Duration after tracking step: %.6f s\n",t_aftertrack);
-    t = std::chrono::steady_clock::now();
+    ecountgmifs_update_running_average(
+      std::chrono::duration<double>(
+        std::chrono::steady_clock::now() - phase_start
+      ).count(),
+      timing_iteration_count,
+      t_aftertrack
+    );
+    ecountgmifs_print_timing(
+      "Duration after tracking step",
+      t_aftertrack
+    );
+
+    iteration_transition_start =
+      std::chrono::steady_clock::now();
   }
 }
