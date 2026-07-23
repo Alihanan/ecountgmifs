@@ -87,6 +87,16 @@ struct SoftplusLink : public IEcountgmifsLinkFunc
 {
   arma::uword parameter_count() const noexcept override { return 1; }
 
+  arma::vec initial_parameters() const override
+  {
+    return arma::vec({1.0});
+  }
+
+  arma::vec parameter_lower_bounds() const override
+  {
+    return arma::vec({1e-8});
+  }
+
   std::string name() const override
   {
     return "Softplus";
@@ -218,6 +228,7 @@ struct PoissonFamily final : public IEcountgmifsFamily
 private:
   double mu_min_cap_;
   double mu_max_cap_;
+  double poisson_fallback_eps_;
 
   void validate_mu_caps() const
   {
@@ -246,17 +257,68 @@ private:
 
 struct NB2Family final : public IEcountgmifsFamily
 {
+private:
+  double mu_min_cap_;
+  double mu_max_cap_;
+  double poisson_fallback_eps_;
+  double dispersion_initial_;
+  double dispersion_lower_bound_;
+  double dispersion_upper_bound_;
+
+public:
   NB2Family(
-    const double mu_min_cap,
-    const double mu_max_cap,
-    const double poisson_fallback_eps
+    double mu_min_cap,
+    double mu_max_cap,
+    double poisson_fallback_eps,
+    double dispersion_initial,
+    double dispersion_lower_bound,
+    double dispersion_upper_bound
   ) :
   mu_min_cap_(mu_min_cap),
   mu_max_cap_(mu_max_cap),
-  poisson_fallback_eps_(poisson_fallback_eps)
+  poisson_fallback_eps_(poisson_fallback_eps),
+  dispersion_initial_(dispersion_initial),
+  dispersion_lower_bound_(dispersion_lower_bound),
+  dispersion_upper_bound_(dispersion_upper_bound)
   {
-    validate_settings();
+    if (!std::isfinite(dispersion_initial_)) {
+      Rcpp::stop("NB2 initial dispersion must be finite");
+    }
+
+    if (
+        std::isnan(dispersion_lower_bound_) ||
+          std::isnan(dispersion_upper_bound_)
+    ) {
+      Rcpp::stop("NB2 dispersion bounds must not be NaN");
+    }
+
+    if (dispersion_lower_bound_ < 0.0) {
+      Rcpp::stop(
+        "NB2 dispersion lower bound must be non-negative"
+      );
+    }
+
+    if (
+        dispersion_lower_bound_ >=
+          dispersion_upper_bound_
+    ) {
+      Rcpp::stop(
+        "NB2 dispersion lower bound must be smaller "
+        "than the upper bound"
+      );
+    }
+
+    if (
+        dispersion_initial_ < dispersion_lower_bound_ ||
+          dispersion_initial_ > dispersion_upper_bound_
+    ) {
+      Rcpp::stop(
+        "NB2 initial dispersion must lie within "
+        "the dispersion bounds"
+      );
+    }
   }
+
 
   std::string name() const override
   {
@@ -387,11 +449,23 @@ struct NB2Family final : public IEcountgmifsFamily
       (dispersion * dispersion);
   }
 
-private:
-  double mu_min_cap_;
-  double mu_max_cap_;
-  double poisson_fallback_eps_;
+  arma::vec initial_parameters() const override
+  {
+    return arma::vec({dispersion_initial_});
+  }
 
+  arma::vec parameter_lower_bounds() const override
+  {
+    return arma::vec({dispersion_lower_bound_});
+  }
+
+  arma::vec parameter_upper_bounds() const override
+  {
+    return arma::vec({dispersion_upper_bound_});
+  }
+
+
+private:
   void poisson_negloglik(
       const arma::vec& y,
       const arma::vec& mu,
@@ -568,14 +642,20 @@ SEXP example_create_poisson_family(
 SEXP example_create_nb2_family(
     const double mu_min_cap = 1e-12,
     const double mu_max_cap = 1e12,
-    const double poisson_fallback_eps = 1e-8
+    const double poisson_fallback_eps = 1e-8,
+    const double dispersion_initial = 1e-4,
+    const double dispersion_lower_bound = 1e-12,
+    const double dispersion_upper_bound = 1e12
 )
 {
   return Rcpp::XPtr<IEcountgmifsFamily>(
     new ecountgmifs_examples::NB2Family(
         mu_min_cap,
         mu_max_cap,
-        poisson_fallback_eps
+        poisson_fallback_eps,
+        dispersion_initial,
+        dispersion_lower_bound,
+        dispersion_upper_bound
     ),
     true
   );

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <RcppArmadillo.h>
+#include <type_traits>
 
 inline void check_finite_scalar(
     double x,
@@ -8,6 +9,81 @@ inline void check_finite_scalar(
 ) {
   if (!std::isfinite(x)) {
     Rcpp::stop("value of '" + name + "' must be finite");
+  }
+}
+
+inline void check_initial_bounds(
+    double initial,
+    double lower,
+    double upper,
+    const char* name
+)
+{
+  if (initial < lower || initial > upper) {
+    Rcpp::stop(
+      "initial value of '%s' must lie within its bounds",
+      name
+    );
+  }
+}
+
+
+inline void check_initial_bounds(
+    const arma::vec& initial,
+    const arma::vec& lower,
+    const arma::vec& upper,
+    arma::uword expected_size,
+    const char* name
+)
+{
+  if (
+      initial.n_elem != expected_size ||
+        lower.n_elem != expected_size ||
+        upper.n_elem != expected_size
+  ) {
+    Rcpp::stop(
+      "'%s' initial values and bounds must each contain %llu elements",
+      name,
+      static_cast<unsigned long long>(expected_size)
+    );
+  }
+
+  if (
+      arma::any(initial < lower) ||
+        arma::any(initial > upper)
+  ) {
+    Rcpp::stop(
+      "initial values of '%s' must lie within their bounds",
+      name
+    );
+  }
+}
+
+template <typename Integer>
+inline void check_positive_integer(
+    Integer value,
+    const char* name
+)
+{
+  static_assert(
+    std::is_integral_v<Integer>,
+    "check_positive_integer requires an integer type"
+  );
+
+  if constexpr (std::is_signed_v<Integer>) {
+    if (value <= 0) {
+      Rcpp::stop(
+        "value of '%s' must be positive",
+        name
+      );
+    }
+  } else {
+    if (value == 0) {
+      Rcpp::stop(
+        "value of '%s' must be positive",
+        name
+      );
+    }
   }
 }
 

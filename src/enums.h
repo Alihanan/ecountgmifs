@@ -14,26 +14,59 @@ inline EnumStateTrackStrategy as_track_strategy(int x)
   }
 }
 
-inline const char* termination_status_name(
-    EnumTerminationStatus status
+inline const char* state_track_strategy_name(
+    EnumStateTrackStrategy strategy
 ) noexcept
 {
-  switch (status) {
-  case RUNNING:
-    return "RUNNING";
+  switch (strategy) {
+  case EnumStateTrackStrategy::ACTIVE_SET_CHANGE:
+    return "Active set change";
 
-  case CONVERGED:
-    return "CONVERGED";
+  case EnumStateTrackStrategy::ALL_ITERATION:
+    return "All iterations";
 
-  case ITERATION_LIMIT_REACHED:
-    return "ITERATION_LIMIT_REACHED";
+  case EnumStateTrackStrategy::EVERY_K_ITERATION:
+    return "Every k iterations";
 
-  case EPSILON_MIN_REACHED:
-    return "EPSILON_MIN_REACHED";
-
-  case FAILED:
-    return "FAILED";
+  case EnumStateTrackStrategy::NO_STATE_TRACKING:
+    return "No state tracking";
   }
 
-  return "UNKNOWN_TERMINATION_STATUS";
+  return "Unknown";
+}
+
+inline const char* stagewise_termination_reason_label(
+    EnumStagewiseTerminationReason reason
+) noexcept
+{
+  switch (reason) {
+  case EnumStagewiseTerminationReason::STAGEWISE_NOT_INITIALIZED:
+    return "Not initialized";
+
+  case EnumStagewiseTerminationReason::STAGEWISE_RUNNING:
+    return "Running";
+
+  case EnumStagewiseTerminationReason::STAGEWISE_BETA_STEP_ZERO:
+    return "Beta step zero";
+
+  case EnumStagewiseTerminationReason::STAGEWISE_BETA_STALLED:
+    return "Beta stalled";
+
+  case EnumStagewiseTerminationReason::STAGEWISE_OBJECTIVE_STALLED:
+    return "Objective stalled";
+
+  case EnumStagewiseTerminationReason::
+    STAGEWISE_PSEUDO_R2_CUTOFF_REACHED:
+    return "Pseudo-R2 cutoff reached";
+
+  case EnumStagewiseTerminationReason::
+    STAGEWISE_EPSILON_MIN_REACHED:
+    return "Minimum epsilon reached";
+
+  case EnumStagewiseTerminationReason::
+    STAGEWISE_ITERATION_LIMIT_REACHED:
+    return "Iteration limit reached";
+  }
+
+  return "Unknown termination reason";
 }

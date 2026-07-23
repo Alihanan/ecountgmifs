@@ -5,109 +5,122 @@
 \title{Auxiliary control for extended count GMIFS fitting}
 \usage{
 ecountgmifs.control(
-  iteration.max = 10000,
+  iteration.max = 10000L,
   epsilon.max = 0.01,
   epsilon.start = 1e-06,
   epsilon.min = .Machine$double.eps,
   tol = 1e-08,
-  nlopt.optim.reltol = tol,
   loglik.reltol.cutoff = 0.25,
-  nb.poisson.fallback.eps = 1e-08,
   enet.abs.tol = 1e-10,
   enet.rel.tol = 1e-06,
   enet.max.iter = 99L,
-  state.track.strategy = c("all.iteration", "active.set.change", "every.k.iteration",
+  state.track.strategy = c("active.set.change", "all.iteration", "every.k.iteration",
     "none"),
-  state.track.freq = 10
+  state.track.freq = 10L,
+  verbose = FALSE,
+  include.data = FALSE,
+  theta.initial = 0,
+  theta.lower.bounds = -Inf,
+  theta.upper.bounds = Inf,
+  nlopt.algorithm = 28L,
+  nlopt.xtol.rel = tol,
+  nlopt.ftol.rel = tol,
+  nlopt.maxeval = 100L
 )
 }
 \arguments{
-\item{iteration.max}{maximum number of path-following iteration steps}
+\item{iteration.max}{Positive integer. Maximum number of stagewise
+iterations.}
 
-\item{epsilon.max}{maximum step size, e.g. upper bound for step doubling}
+\item{epsilon.max}{Positive numeric value. Maximum permitted stagewise step
+size.}
 
-\item{epsilon.start}{initial step size before halving procedure}
+\item{epsilon.start}{Positive numeric value. Initial stagewise step size.}
 
-\item{epsilon.min}{minimum step size, e.g. everything smaller considered a zero step and considered converged}
+\item{epsilon.min}{Non-negative numeric value. Minimum permitted stagewise
+step size.}
 
-\item{tol}{numerical convergence tolerance for main C++ code}
+\item{tol}{Positive numeric value. General numerical convergence tolerance.}
 
-\item{nlopt.optim.reltol}{relative tolerance for internal C++ numerical optimization
-performed using the \emph{NLopt} library through \link[nloptr]{nloptr}.}
+\item{loglik.reltol.cutoff}{Non-negative relative log-likelihood cutoff used
+by the stopping rule corresponding to the pseudo-\eqn{R^2} threshold.}
 
-\item{loglik.reltol.cutoff}{numeric. Non-negative relative
-log-likelihood cutoff used by stopping or model-selection rules comparing
-the fitted path to a reference log-likelihood. This quantity corresponds
-to the pseudo-\eqn{R^2} threshold used in the accompanying research paper.}
+\item{enet.abs.tol}{Positive absolute tolerance used by the weighted
+elastic-net solver.}
 
-\item{nb.poisson.fallback.eps}{numeric. Non-negative dispersion threshold
-below which the negative-binomial likelihood is evaluated using the
-Poisson likelihood for numerical stability.}
+\item{enet.rel.tol}{Non-negative relative tolerance used by the weighted
+elastic-net solver.}
 
-\item{enet.abs.tol}{numeric. Positive absolute tolerance used by the
-one-dimensional weighted elastic-net lambda bracketing/bisection solver.}
+\item{enet.max.iter}{Positive integer. Maximum number of elastic-net solver
+iterations.}
 
-\item{enet.rel.tol}{numeric. Non-negative relative tolerance used by the
-one-dimensional weighted elastic-net lambda bracketing/bisection solver.}
-
-\item{enet.max.iter}{integer. Maximum number of bisection iterations used by
-the one-dimensional weighted elastic-net lambda solver.}
-
-\item{state.track.strategy}{character. Strategy used to track the algorithm
-state along the stagewise path. The tracked state may include quantities
-such as the current coefficient vector, active set, step size, dispersion
-parameter, elastic-net norm, log-likelihood, and other path diagnostics.
-One of:
+\item{state.track.strategy}{Character value specifying the path-state
+tracking strategy. One of:
 \describe{
 \item{\code{"active.set.change"}}{
-Track the current state only when the active set changes. Consecutive
-iterations with the same active set overwrite the previous stored
-state, so the returned path contains the last iteration associated
-with each distinct active set. This is the default and usually the
-most memory-efficient informative option.
+Store states when the active set changes.
 }
 \item{\code{"all.iteration"}}{
-Track the state at every path-following iteration. This gives the most
-detailed representation of the path, but can require substantial
-memory for long paths or high-dimensional designs.
+Store the state at every stagewise iteration.
 }
 \item{\code{"every.k.iteration"}}{
-Track the state every \code{state.track.freq} iterations. This gives a
-regular subsampling of the path and is useful when full iteration-level
-tracking is too large.
+Store the state every \code{state.track.freq} iterations.
 }
 \item{\code{"none"}}{
-Do not track the path state. Only final or selected model summaries are
-returned.
+Do not store stagewise path states.
 }
 }}
 
-\item{state.track.freq}{integer. Tracking frequency used when
-\code{state.track.strategy = "every.k.iteration"}. For example,
-\code{state.track.freq = 10} stores the algorithm state every 10
-iterations. Ignored by the other tracking strategies.}
+\item{state.track.freq}{Positive integer. Tracking frequency used for
+\code{state.track.strategy = "every.k.iteration"}.}
+
+\item{verbose}{Logical value. Whether fitting progress should be printed.}
+
+\item{include.data}{Logical value. Whether input data should be included in
+the returned object.}
+
+\item{theta.initial}{Numeric vector containing initial values of the
+unpenalized coefficients. A scalar may be expanded by \code{\link[=ecountgmifs]{ecountgmifs()}} to
+the number of columns of the unpenalized design matrix.}
+
+\item{theta.lower.bounds}{Numeric vector containing lower bounds for
+\code{theta}. Infinite values are allowed. A scalar may be expanded by
+\code{\link[=ecountgmifs]{ecountgmifs()}}.}
+
+\item{theta.upper.bounds}{Numeric vector containing upper bounds for
+\code{theta}. Infinite values are allowed. A scalar may be expanded by
+\code{\link[=ecountgmifs]{ecountgmifs()}}.}
+
+\item{nlopt.algorithm}{Integer NLopt algorithm identifier. The default,
+\code{28L}, corresponds to \code{NLOPT_LN_NELDERMEAD}.}
+
+\item{nlopt.xtol.rel}{Non-negative relative parameter tolerance for NLopt.
+A value of zero disables this stopping condition.}
+
+\item{nlopt.ftol.rel}{Non-negative relative objective tolerance for NLopt.
+A value of zero disables this stopping condition.}
+
+\item{nlopt.maxeval}{Positive integer. Maximum number of NLopt objective
+evaluations.}
 }
 \value{
 A list of control parameters.
 }
 \description{
-Auxiliary function for \code{\link[=ecountgmifs]{ecountgmifs()}} fitting. Typically only used when
-calling \code{\link[=ecountgmifs]{ecountgmifs()}} through its \code{control} argument.
+Creates a control object for \code{\link[=ecountgmifs]{ecountgmifs()}}. This function is normally used
+through the \code{control} argument of \code{\link[=ecountgmifs]{ecountgmifs()}}.
 }
 \details{
-The \code{control} argument of \code{\link[=ecountgmifs]{ecountgmifs()}} is passed to the internal
-fitting routine, which uses its elements to control the stagewise path,
-adaptive step-size procedure, internal numerical optimization, stopping
-rules, and coefficient-path storage. The function
-\code{ecountgmifs.control()} provides default values and performs basic
-sanity checking before fitting begins.
+The returned values control the forward-stagewise path, adaptive step size,
+convergence rules, elastic-net calculations, internal NLopt optimization,
+initialization of unpenalized coefficients, and path-state storage.
 
-The state-tracking strategy given by \code{state.track.strategy} controls
-the amount of path information stored
-in the returned \code{\link[=ecountgmifs]{ecountgmifs()}} object. Tracked quantities include the
-coefficient vector, active set, step size, dispersion parameter, elastic-net
-norm, log-likelihood, and other diagnostics. Tracking every iteration gives
-the most detailed representation of the algorithm path, whereas
-\code{"active.set.change"} stores a compressed path indexed by changes in
-the active set.
+The state-tracking strategy controls how much information is retained along
+the fitted path. The \code{"active.set.change"} strategy stores a compressed path,
+while \code{"all.iteration"} stores every iteration.
+
+Module-specific controls do not belong in this object. For example,
+negative-binomial dispersion initialization, dispersion bounds, mean caps,
+and the Poisson fallback threshold are supplied when constructing the
+negative-binomial family object.
 }

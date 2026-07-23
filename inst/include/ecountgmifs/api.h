@@ -12,13 +12,27 @@ enum EnumStateTrackStrategy
   EVERY_K_ITERATION = 2,
   NO_STATE_TRACKING = 3
 };
-enum EnumTerminationStatus
+
+enum EnumStagewisePhase
 {
-  RUNNING = 0,
-  CONVERGED = 1,
-  ITERATION_LIMIT_REACHED = 2,
-  EPSILON_MIN_REACHED = 3,
-  FAILED = 4
+  STAGEWISE_NOT_STARTED = 0,
+  STAGEWISE_NONPEN = 1,
+  STAGEWISE_SATURATED = 2,
+  STAGEWISE_ITERATION = 3,
+  STAGEWISE_FINISHED = 4
+};
+enum EnumStagewiseTerminationReason
+{
+  STAGEWISE_NOT_INITIALIZED = 0,
+  STAGEWISE_RUNNING = 1,
+
+  STAGEWISE_BETA_STEP_ZERO = 2,
+  STAGEWISE_BETA_STALLED = 3,
+  STAGEWISE_OBJECTIVE_STALLED = 4,
+  STAGEWISE_PSEUDO_R2_CUTOFF_REACHED = 5,
+
+  STAGEWISE_EPSILON_MIN_REACHED = 6,
+  STAGEWISE_ITERATION_LIMIT_REACHED = 7
 };
 
 struct IEcountgmifsCriterion;
@@ -44,6 +58,25 @@ struct IEcountgmifsLinkFunc
       arma::vec& d_mu_d_eta,
       arma::mat& d_mu_d_link_parameters
   ) const = 0;
+
+  virtual arma::vec initial_parameters() const
+  {
+    return arma::vec(parameter_count(), arma::fill::zeros);
+  }
+
+  virtual arma::vec parameter_lower_bounds() const
+  {
+    arma::vec lower(parameter_count());
+    lower.fill(-arma::datum::inf);
+    return lower;
+  }
+
+  virtual arma::vec parameter_upper_bounds() const
+  {
+    arma::vec upper(parameter_count());
+    upper.fill(arma::datum::inf);
+    return upper;
+  }
 };
 struct IEcountgmifsFamily
 {
@@ -67,6 +100,25 @@ struct IEcountgmifsFamily
       arma::vec& d_negloglik_d_mu,
       arma::vec& d_negloglik_d_family_parameters
   ) const = 0;
+
+  virtual arma::vec initial_parameters() const
+  {
+    return arma::vec(parameter_count(), arma::fill::zeros);
+  }
+
+  virtual arma::vec parameter_lower_bounds() const
+  {
+    arma::vec lower(parameter_count());
+    lower.fill(-arma::datum::inf);
+    return lower;
+  }
+
+  virtual arma::vec parameter_upper_bounds() const
+  {
+    arma::vec upper(parameter_count());
+    upper.fill(arma::datum::inf);
+    return upper;
+  }
 };
 
 
@@ -116,18 +168,24 @@ struct EcountgmifsControl {
   double epsilon_start;
   double epsilon_min;
   double tol;
-  double nlopt_optim_reltol;
   double loglik_reltol_cutoff;
-  double nb_poisson_fallback_eps;
   double enet_abs_tol;
   double enet_rel_tol;
   uint32_t enet_max_iter;
-  bool fixed_dispersion;
-  double fixed_dispersion_value;
+
   EnumStateTrackStrategy state_track_strategy;
   uint64_t state_track_freq;
   bool verbose;
   bool include_data;
+
+  const arma::vec& theta_initial;
+  const arma::vec& theta_lower_bounds;
+  const arma::vec& theta_upper_bounds;
+
+  int nlopt_algorithm;
+  double nlopt_xtol_rel;
+  double nlopt_ftol_rel;
+  int nlopt_maxeval;
 };
 
 struct EcountgmifsParameters
@@ -169,12 +227,25 @@ struct EcountgmifsPredictors
   arma::uvec active_set;
 };
 
-struct EcountgmifsStagewiseState
+struct EcountgmifsStagewise
 {
+  EnumStagewisePhase phase = EnumStagewisePhase::STAGEWISE_NOT_STARTED;
+  EnumStagewiseTerminationReason termination_reason =
+    EnumStagewiseTerminationReason::STAGEWISE_NOT_INITIALIZED;
+
   arma::vec delta_beta;
   arma::vec delta_xbeta;
   arma::vec trial_nu_linear;
   arma::vec trial_mu_mean;
+
+  /*
+   * Numerical explanation produced by stagewise.
+   *
+   * Examples:
+   *   "Relative negative log-likelihood difference = ..."
+   *   "Epsilon = ..., epsilon_min = ..."
+   */
+  std::string termination_detail = "Not initialized";
 
   double epsilon = 0.0;
 
@@ -187,10 +258,10 @@ struct EcountgmifsState
 {
   EcountgmifsPredictors param;
 
-  double negloglik;
-  double saturated_dispersion;
-  double saturated_negloglik;
-  double null_negloglik;
+  double negloglik = arma::datum::nan;
+  double saturated_dispersion = arma::datum::nan;
+  double saturated_negloglik = arma::datum::nan;
+  double null_negloglik = arma::datum::nan;
 
   Rcpp::NumericVector criteria;
 
@@ -204,23 +275,20 @@ struct EcountgmifsPath
   std::vector<EcountgmifsState> states;
   arma::uvec last_saved_active_set;
   bool active_set_changed;
-
-  EnumTerminationStatus termination_status;
-
   std::string message;
 };
 
 struct EcountgmifsRuntime {
-  EcountgmifsState& state;
-  EcountgmifsPath& path;
-  EcountgmifsGradients& gradient;
-  EcountgmifsStagewiseState& stagewise;
+  const EcountgmifsState& state;
+  const EcountgmifsPath& path;
+  const EcountgmifsGradients& gradient;
+  const EcountgmifsStagewise& stagewise;
 };
 
 struct EcountgmifsContext {
-  EcountgmifsInput& input;
-  EcountgmifsControl& control;
-  EcountgmifsRuntime& runtime;
+  const EcountgmifsInput& input;
+  const EcountgmifsControl& control;
+  const EcountgmifsRuntime& runtime;
 };
 
 struct IEcountgmifsCriterion

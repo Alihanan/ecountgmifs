@@ -24,6 +24,12 @@ double ecountgmifs_call_context_criterion(
     double enet_alpha = 0.75,
     bool include_data = false
 ) {
+  Rcpp::stop(
+    "Criterion context testing is temporarily disabled during the API refactor."
+  );
+
+  return NA_REAL;
+  /*
   typedef double (*criterion_fun_t)(const EcountgmifsContext*);
 
   void* address = R_ExternalPtrAddr(criterion_ptr);
@@ -185,5 +191,5 @@ double ecountgmifs_call_context_criterion(
         state
       };
 
-      return criterion(&ctx);
+      return criterion(&ctx);*/
 }
