@@ -131,12 +131,10 @@ struct NloptOptimizerInternal
   ) = delete;
 
 
-  double optimize()
+  void optimize()
   {
     if (opt == nullptr) {
-      Rcpp::stop(
-        "cannot optimize an empty parameter vector"
-      );
+      return;
     }
 
     double objective_value =
@@ -155,8 +153,6 @@ struct NloptOptimizerInternal
         static_cast<int>(result)
       );
     }
-
-    return objective_value;
   }
 
 
