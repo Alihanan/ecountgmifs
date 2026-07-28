@@ -259,22 +259,29 @@ struct EcountgmifsState
   EcountgmifsPredictors param;
 
   double negloglik = arma::datum::nan;
-  double saturated_dispersion = arma::datum::nan;
-  double saturated_negloglik = arma::datum::nan;
-  double null_negloglik = arma::datum::nan;
 
   Rcpp::NumericVector criteria;
 
   uint64_t iteration;
-
-  double pseudo_r2 = 1.0;
 };
 
 struct EcountgmifsPath
 {
+  double null_negloglik =
+    arma::datum::nan;
+
+  arma::vec null_theta;
+  arma::vec null_family_parameters;
+  arma::vec null_link_parameters;
+
+  double saturated_negloglik =
+    arma::datum::nan;
+
+  arma::vec saturated_family_parameters;
+
   std::vector<EcountgmifsState> states;
   arma::uvec last_saved_active_set;
-  bool active_set_changed;
+  bool active_set_changed = false;
   std::string message;
 };
 

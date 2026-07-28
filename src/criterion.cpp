@@ -1,6 +1,5 @@
 #include <RcppArmadillo.h>
 #include "../inst/include/ecountgmifs/api.h"
-#include "../src/numerical_internal_constants.h"
 // [[Rcpp::depends(RcppArmadillo)]]
 
 // [[Rcpp::export]]

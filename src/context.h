@@ -14,6 +14,7 @@
 #include "util.h"
 #include "r_convert.h"
 #include "nlopt_optimizer.h"
+#include "enet.h"
 #include "debug.h"
 
 inline void check_input_dimensions(
@@ -407,7 +408,6 @@ struct EcountgmifsStateInternal
 {
 private:
   const EcountgmifsInput& input;
-  arma::vec saturated_family_parameters_;
   EcountgmifsState api;
 
 public:
@@ -416,9 +416,6 @@ public:
       const EcountgmifsControl& control
   ) :
     input(input_),
-    saturated_family_parameters_(
-      input.family->initial_parameters()
-    ),
     api {
     { // EcountgmifsPredictors
       { // EcountgmifsParameters
@@ -539,16 +536,6 @@ public:
     return api.param.param.family_parameters;
   }
 
-  const arma::vec& link_parameters() const noexcept
-  {
-    return api.param.param.link_parameters;
-  }
-
-  double negloglik() const noexcept
-  {
-    return api.negloglik;
-  }
-
   const arma::vec& saturated_family_parameters() const noexcept
   {
     return saturated_family_parameters_;
@@ -559,64 +546,104 @@ public:
     return saturated_family_parameters_;
   }
 
+  const arma::vec& link_parameters() const noexcept
+  {
+    return api.param.param.link_parameters;
+  }
+
+  double negloglik() const noexcept
+  {
+    return api.negloglik;
+  }
+
   double saturated_negloglik() const noexcept
   {
     return api.saturated_negloglik;
   }
 
-  void initialize_saturated_fit()
+  const arma::vec& beta() const noexcept
   {
-    copy_parameter_vector(
-      api.param.param.family_parameters,
-      saturated_family_parameters_,
-      "saturated family"
-    );
-
-    refresh_saturated_after_family_parameters();
+    return api.param.param.beta;
   }
 
-  void set_saturated_family_parameters(
-      unsigned n,
-      const double* values
-  )
+  uint64_t iteration() const noexcept
   {
-    copy_parameter_data(
-      n,
-      values,
-      saturated_family_parameters_,
-      "saturated family"
-    );
-
-    refresh_saturated_after_family_parameters();
+    return api.iteration;
   }
 
-  void refresh_saturated_after_family_parameters()
+  double pseudo_r2() const noexcept
   {
+    return api.pseudo_r2;
+  }
+
+  void begin_stagewise_iteration(
+      uint64_t iteration
+  ) noexcept
+  {
+    api.iteration = iteration;
+  }
+
+  void evaluate_beta_step(
+      const arma::vec& delta_beta,
+      arma::vec& delta_xbeta,
+      arma::vec& trial_eta,
+      arma::vec& trial_mu,
+      double& trial_negloglik
+  ) const
+  {
+    if (delta_beta.n_elem != api.param.param.beta.n_elem) {
+      Rcpp::stop(
+        "incorrect beta-step parameter count"
+      );
+    }
+
+    delta_xbeta =
+      input.X * delta_beta;
+
+    trial_eta =
+      api.param.eta + delta_xbeta;
+
+    input.link_func->inverse(
+        trial_eta,
+        api.param.param.link_parameters,
+        trial_mu
+    );
+
+    check_vector_finite(
+      trial_mu,
+      "trial mu"
+    );
+
     input.family->negloglik(
         input.y,
-        input.y,
-        saturated_family_parameters_,
-        api.saturated_negloglik
+        trial_mu,
+        api.param.param.family_parameters,
+        trial_negloglik
     );
 
     check_finite_scalar(
-      api.saturated_negloglik,
-      "saturated negloglik"
+      trial_negloglik,
+      "trial negloglik"
     );
+  }
 
-    if (saturated_family_parameters_.n_elem == 0) {
-      api.saturated_dispersion = 0.0;
-    } else if (saturated_family_parameters_.n_elem == 1) {
-      api.saturated_dispersion =
-        saturated_family_parameters_[0];
-    } else {
-      /*
-       * The existing public API has only a scalar
-       * saturated_dispersion field.
-       */
-      api.saturated_dispersion =
-        arma::datum::nan;
+  void commit_beta_step(
+      const arma::vec& delta_beta
+  )
+  {
+    if (
+        delta_beta.n_elem !=
+          api.param.param.beta.n_elem
+    ) {
+      Rcpp::stop(
+        "incorrect beta-step parameter count"
+      );
     }
+
+    api.param.param.beta +=
+      delta_beta;
+
+    refresh_after_beta();
   }
 
   void initialize_for_fit(
@@ -649,6 +676,18 @@ public:
   void store_null_negloglik() noexcept
   {
     api.null_negloglik = api.negloglik;
+    update_pseudo_r2();
+  }
+
+  void initialize_saturated_fit()
+  {
+    copy_parameter_vector(
+      api.param.param.family_parameters,
+      saturated_family_parameters_,
+      "saturated family"
+    );
+
+    refresh_saturated_after_family_parameters();
   }
 
   Rcpp::List to_list() const
@@ -825,6 +864,21 @@ public:
     refresh_after_family_parameters();
   }
 
+  void set_saturated_family_parameters(
+      unsigned n,
+      const double* values
+  )
+  {
+    copy_parameter_data(
+      n,
+      values,
+      saturated_family_parameters_,
+      "saturated family"
+    );
+
+    refresh_saturated_after_family_parameters();
+  }
+
   void set_link_parameters(
       unsigned n,
       const double* values
@@ -842,30 +896,17 @@ public:
 
   void refresh_after_beta()
   {
-    api.param.xbeta =
-      input.X *
-      api.param.param.beta;
-
-    update_eta();
-    update_mu();
-    update_negloglik();
+    update_xbeta();
   }
 
   void refresh_after_theta()
   {
-    api.param.wtheta =
-      input.w *
-      api.param.param.theta;
-
-    update_eta();
-    update_mu();
-    update_negloglik();
+    update_wtheta();
   }
 
   void refresh_after_link_parameters()
   {
     update_mu();
-    update_negloglik();
   }
 
   void refresh_after_family_parameters()
@@ -874,6 +915,7 @@ public:
   }
 
 private:
+
   static void copy_parameter_vector(
       const arma::vec& source,
       arma::vec& destination,
@@ -954,6 +996,58 @@ private:
       api.param.mu,
       "mu"
     );
+  }
+
+  void update_active_set()
+  {
+    api.param.active_set =
+      arma::conv_to<arma::uvec>::from(
+        api.param.param.beta != 0.0
+      );
+  }
+  void update_xbeta()
+  {
+    api.param.xbeta =
+      input.X *
+      api.param.param.beta;
+
+    update_active_set();
+    update_eta();
+  }
+
+  void update_wtheta()
+  {
+    api.param.wtheta =
+      input.w *
+      api.param.param.theta;
+
+    update_eta();
+  }
+
+  void update_eta()
+  {
+    api.param.eta =
+      input.offset +
+      api.param.xbeta +
+      api.param.wtheta;
+
+    update_mu();
+  }
+
+  void update_mu()
+  {
+    input.link_func->inverse(
+        api.param.eta,
+        api.param.param.link_parameters,
+        api.param.mu
+    );
+
+    check_vector_finite(
+      api.param.mu,
+      "mu"
+    );
+
+    update_negloglik();
   }
 
   void update_negloglik()
@@ -1044,6 +1138,25 @@ public:
     return api;
   }
 
+  const arma::vec& update_beta_gradient()
+  {
+    update_mean_derivatives();
+
+    api.d_negloglik_d_beta =
+      api.d_eta_d_beta.t() *
+      (
+          api.d_negloglik_d_mu %
+            api.d_mu_d_eta
+      );
+
+    check_vector_finite(
+      api.d_negloglik_d_beta,
+      "beta gradient"
+    );
+
+    return api.d_negloglik_d_beta;
+  }
+
   void write_theta_gradient(
       unsigned n,
       double* out
@@ -1111,37 +1224,6 @@ public:
 
     std::copy_n(
       api.d_negloglik_d_link_parameters.memptr(),
-      n,
-      out
-    );
-  }
-
-  void write_saturated_family_gradient(
-      unsigned n,
-      double* out
-  )
-  {
-    check_gradient_size(
-      n,
-      input.family->parameter_count(),
-      "saturated family"
-    );
-
-    input.family->grad(
-        input.y,
-        input.y,
-        state.saturated_family_parameters(),
-        api.d_negloglik_d_mu,
-        api.d_negloglik_d_family_parameters
-    );
-
-    check_vector_finite(
-      api.d_negloglik_d_family_parameters,
-      "saturated family gradient"
-    );
-
-    std::copy_n(
-      api.d_negloglik_d_family_parameters.memptr(),
       n,
       out
     );
@@ -1395,6 +1477,7 @@ public:
     initialize();
     fit_null_model();
     fit_saturated_model();
+    fit_stagewise_model();
   }
 
 private:
@@ -1437,69 +1520,6 @@ private:
 
     api.termination_detail =
       "Ready for non-penalized fitting.";
-  }
-
-  void fit_saturated_model()
-  {
-    api.phase =
-      EnumStagewisePhase::STAGEWISE_SATURATED;
-
-    Rcpp::checkUserInterrupt();
-
-    state.initialize_saturated_fit();
-
-    saturated_family_evaluation_count = 0;
-
-    ECOUNTGMIFS_VERBOSE(
-      control.verbose,
-      "saturated: start"
-      << ", family_parameters="
-      << state.saturated_family_parameters().t()
-      << ", initial_negloglik="
-      << state.saturated_negloglik()
-    );
-
-    /*
-     * This optimizer is needed only once. Its parameter vector
-     * belongs to StateInternal and is distinct from the regular
-     * fitted family-parameter vector.
-     */
-    NloptOptimizerInternal saturated_family_optimizer(
-        state.saturated_family_parameters_for_optimizer(),
-        input.family->parameter_lower_bounds(),
-        input.family->parameter_upper_bounds(),
-        &EcountgmifsStagewiseInternal::saturated_family_objective,
-        this,
-        control.nlopt_algorithm,
-        control.nlopt_xtol_rel,
-        control.nlopt_ftol_rel,
-        control.nlopt_maxeval
-    );
-
-    saturated_family_optimizer.optimize();
-
-    /*
-     * The selected NLopt result is not necessarily the last
-     * callback point.
-     */
-    state.refresh_saturated_after_family_parameters();
-
-    ECOUNTGMIFS_VERBOSE(
-      control.verbose,
-      "saturated: done"
-      << ", evaluations="
-      << saturated_family_evaluation_count
-      << ", family_parameters="
-      << state.saturated_family_parameters().t()
-      << ", negloglik="
-      << state.saturated_negloglik()
-    );
-
-    api.phase =
-      EnumStagewisePhase::STAGEWISE_ITERATION;
-
-    api.termination_detail =
-      "Saturated model fitted; ready for stagewise fitting.";
   }
 
   void fit_null_model()
@@ -1681,6 +1701,347 @@ private:
     );
   }
 
+  void fit_saturated_model()
+  {
+    api.phase =
+      EnumStagewisePhase::STAGEWISE_SATURATED;
+
+    Rcpp::checkUserInterrupt();
+
+    state.initialize_saturated_fit();
+
+    saturated_family_evaluation_count = 0;
+
+    ECOUNTGMIFS_VERBOSE(
+      control.verbose,
+      "saturated: start"
+      << ", family_parameters="
+      << state.saturated_family_parameters().t()
+      << ", initial_negloglik="
+      << state.saturated_negloglik()
+    );
+
+    NloptOptimizerInternal saturated_family_optimizer(
+        state.saturated_family_parameters_for_optimizer(),
+        input.family->parameter_lower_bounds(),
+        input.family->parameter_upper_bounds(),
+        &EcountgmifsStagewiseInternal::saturated_family_objective,
+        this,
+        static_cast<int>(NLOPT_LN_NELDERMEAD),
+        control.nlopt_xtol_rel,
+        control.nlopt_ftol_rel,
+        control.nlopt_maxeval
+    );
+
+    saturated_family_optimizer.optimize();
+
+    /*
+     * NLopt may write the selected final point after the last
+     * callback, so synchronize the saturated objective once more.
+     */
+    state.refresh_saturated_after_family_parameters();
+
+    ECOUNTGMIFS_VERBOSE(
+      control.verbose,
+      "saturated: done"
+      << ", evaluations="
+      << saturated_family_evaluation_count
+      << ", family_parameters="
+      << state.saturated_family_parameters().t()
+      << ", negloglik="
+      << state.saturated_negloglik()
+    );
+
+    api.phase =
+      EnumStagewisePhase::STAGEWISE_ITERATION;
+
+    api.termination_detail =
+      "Saturated model fitted; ready for stagewise fitting.";
+  }
+
+  void fit_stagewise_model()
+  {
+    api.phase =
+      EnumStagewisePhase::STAGEWISE_ITERATION;
+
+    ElasticNetWeightWorkspace enet_workspace(
+        input.X.n_cols
+    );
+
+    ECOUNTGMIFS_VERBOSE(
+      control.verbose,
+      "stagewise: start"
+      << ", max_iterations="
+      << control.iteration_max
+      << ", epsilon_start="
+      << api.epsilon
+      << ", negloglik="
+      << state.negloglik()
+    );
+
+    for (
+        uint64_t iteration = 1;
+        iteration <= control.iteration_max;
+        ++iteration
+    ) {
+      Rcpp::checkUserInterrupt();
+
+      state.begin_stagewise_iteration(
+        iteration
+      );
+
+      const double negloglik_previous =
+        state.negloglik();
+
+      if (iteration > 1) {
+        api.epsilon =
+          std::min(
+            control.epsilon_max,
+            api.epsilon * 2.0
+          );
+      }
+
+      const arma::vec& beta_gradient =
+        gradient.update_beta_gradient();
+
+      prepare_elastic_net_gradient(
+        beta_gradient,
+        enet_workspace
+      );
+
+      api.halving_count = 0;
+
+      bool beta_step_accepted =
+        false;
+
+      while (api.epsilon >= control.epsilon_min) {
+        solve_elastic_net_1D_weight_prepared_inplace(
+          input.weight_vec,
+          input.enet_alpha,
+          api.epsilon,
+          control.enet_abs_tol,
+          control.enet_rel_tol,
+          control.enet_max_iter,
+          false,
+          enet_workspace,
+          api.delta_beta
+        );
+
+        if (api.delta_beta.is_zero()) {
+          finish_stagewise(
+            EnumStagewiseTerminationReason::
+              STAGEWISE_BETA_STEP_ZERO,
+              "The stagewise beta step is zero."
+          );
+
+          return;
+        }
+
+        state.evaluate_beta_step(
+          api.delta_beta,
+          api.delta_xbeta,
+          api.trial_nu_linear,
+          api.trial_mu_mean,
+          api.negloglik_trial
+        );
+
+        if (
+            api.negloglik_trial <=
+              negloglik_previous
+        ) {
+          state.commit_beta_step(
+            api.delta_beta
+          );
+
+          beta_step_accepted =
+            true;
+
+          break;
+        }
+
+        api.epsilon *=
+          0.5;
+
+        ++api.halving_count;
+
+        ECOUNTGMIFS_VERBOSE(
+          control.verbose,
+          "stagewise: iter="
+          << iteration
+          << " reject_beta"
+          << ", halving="
+          << api.halving_count
+          << ", epsilon="
+          << api.epsilon
+          << ", current_negloglik="
+          << negloglik_previous
+          << ", trial_negloglik="
+          << api.negloglik_trial
+        );
+      }
+
+      if (!beta_step_accepted) {
+        finish_stagewise(
+          EnumStagewiseTerminationReason::
+            STAGEWISE_EPSILON_MIN_REACHED,
+            "Epsilon fell below epsilon_min before a beta step was accepted."
+        );
+
+        return;
+      }
+
+      nonpen_optimizer.optimize();
+      state.refresh_after_theta();
+
+      link_optimizer.optimize();
+      state.refresh_after_link_parameters();
+
+      family_optimizer.optimize();
+      state.refresh_after_family_parameters();
+
+      const double negloglik_current =
+        state.negloglik();
+
+      const double objective_scale =
+        std::max(
+          1.0,
+          std::max(
+            std::abs(negloglik_previous),
+            std::abs(negloglik_current)
+          )
+        );
+
+      const double objective_relative_change =
+        std::abs(
+          negloglik_current -
+            negloglik_previous
+        ) /
+          objective_scale;
+
+      const double beta_step_norm =
+        arma::norm(
+          api.delta_beta,
+          2
+        );
+
+      ECOUNTGMIFS_VERBOSE(
+        control.verbose,
+        "stagewise: iter="
+        << iteration
+        << " accepted"
+        << ", epsilon="
+        << api.epsilon
+        << ", halvings="
+        << api.halving_count
+        << ", beta_step_l2="
+        << beta_step_norm
+        << ", negloglik="
+        << negloglik_current
+        << ", relative_change="
+        << objective_relative_change
+        << ", pseudo_r2="
+        << state.pseudo_r2()
+      );
+
+      if (
+          beta_step_norm <=
+            control.epsilon_min
+      ) {
+        finish_stagewise(
+          EnumStagewiseTerminationReason::
+            STAGEWISE_BETA_STALLED,
+            "The accepted beta step is not larger than epsilon_min."
+        );
+
+        return;
+      }
+
+      if (
+          objective_relative_change <=
+            control.tol
+      ) {
+        finish_stagewise(
+          EnumStagewiseTerminationReason::
+            STAGEWISE_OBJECTIVE_STALLED,
+            "The relative negative log-likelihood change is within tolerance."
+        );
+
+        return;
+      }
+
+      if (
+          control.loglik_reltol_cutoff > 0.0 &&
+            std::isfinite(state.pseudo_r2()) &&
+            state.pseudo_r2() >=
+            1.0 - control.loglik_reltol_cutoff
+      ) {
+        finish_stagewise(
+          EnumStagewiseTerminationReason::
+            STAGEWISE_PSEUDO_R2_CUTOFF_REACHED,
+            "The pseudo-R2 cutoff was reached."
+        );
+
+        return;
+      }
+    }
+
+    finish_stagewise(
+      EnumStagewiseTerminationReason::
+        STAGEWISE_ITERATION_LIMIT_REACHED,
+        "The stagewise iteration limit was reached."
+    );
+  }
+
+  void finish_stagewise(
+      EnumStagewiseTerminationReason reason,
+      const char* detail
+  )
+  {
+    api.phase =
+      EnumStagewisePhase::STAGEWISE_FINISHED;
+
+    api.termination_reason =
+      reason;
+
+    api.termination_detail =
+      detail;
+
+    ECOUNTGMIFS_VERBOSE(
+      control.verbose,
+      "stagewise: stop"
+      << ", reason="
+      << stagewise_termination_reason_label(reason)
+      << ", iteration="
+      << state.iteration()
+      << ", negloglik="
+      << state.negloglik()
+      << ", pseudo_r2="
+      << state.pseudo_r2()
+      << ", epsilon="
+      << api.epsilon
+    );
+  }
+
+  static double saturated_family_objective(
+      unsigned n,
+      const double* values,
+      double*,
+      void* data
+  )
+  {
+    auto& stagewise =
+      *static_cast<EcountgmifsStagewiseInternal*>(data);
+
+      ++stagewise.saturated_family_evaluation_count;
+
+      stagewise.state.set_saturated_family_parameters(
+        n,
+        values
+      );
+
+      return stagewise.state.saturated_negloglik();
+  }
+
   static double nonpen_objective(
       unsigned n,
       const double* values,
@@ -1760,33 +2121,6 @@ private:
       }
 
       return stagewise.state.negloglik();
-  }
-
-  static double saturated_family_objective(
-      unsigned n,
-      const double* values,
-      double* grad,
-      void* data
-  )
-  {
-    auto& stagewise =
-      *static_cast<EcountgmifsStagewiseInternal*>(data);
-
-      ++stagewise.saturated_family_evaluation_count;
-
-      stagewise.state.set_saturated_family_parameters(
-        n,
-        values
-      );
-
-      if (grad != nullptr) {
-        stagewise.gradient.write_saturated_family_gradient(
-          n,
-          grad
-        );
-      }
-
-      return stagewise.state.saturated_negloglik();
   }
 };
 
