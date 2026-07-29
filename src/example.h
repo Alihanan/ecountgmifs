@@ -539,6 +539,156 @@ private:
   }
 };
 
+struct NB2LogFamilyLink final : public IEcountgmifsFamilyLink
+{
+private:
+  NB2Family family_;
+  LogLink link_func_;
+  double poisson_fallback_eps_;
+
+public:
+  NB2LogFamilyLink(
+      double mu_min_cap,
+      double mu_max_cap,
+      double poisson_fallback_eps,
+      double dispersion_initial,
+      double dispersion_lower_bound,
+      double dispersion_upper_bound
+  ) :
+    family_(
+      mu_min_cap,
+      mu_max_cap,
+      poisson_fallback_eps,
+      dispersion_initial,
+      dispersion_lower_bound,
+      dispersion_upper_bound
+    ),
+    poisson_fallback_eps_(poisson_fallback_eps)
+  {}
+
+  std::string family_name() const override
+  {
+    return family_.name();
+  }
+
+  std::string link_name() const override
+  {
+    return link_func_.name();
+  }
+
+  arma::uword family_parameter_count() const noexcept override
+  {
+    return family_.parameter_count();
+  }
+
+  arma::uword link_parameter_count() const noexcept override
+  {
+    return link_func_.parameter_count();
+  }
+
+  arma::vec family_initial_parameters() const override
+  {
+    return family_.initial_parameters();
+  }
+
+  arma::vec family_parameter_lower_bounds() const override
+  {
+    return family_.parameter_lower_bounds();
+  }
+
+  arma::vec family_parameter_upper_bounds() const override
+  {
+    return family_.parameter_upper_bounds();
+  }
+
+  arma::vec link_initial_parameters() const override
+  {
+    return link_func_.initial_parameters();
+  }
+
+  arma::vec link_parameter_lower_bounds() const override
+  {
+    return link_func_.parameter_lower_bounds();
+  }
+
+  arma::vec link_parameter_upper_bounds() const override
+  {
+    return link_func_.parameter_upper_bounds();
+  }
+
+  void inverse(
+      const arma::vec& eta,
+      const arma::vec& link_parameters,
+      arma::vec& mu
+  ) const override
+  {
+    link_func_.inverse(
+      eta,
+      link_parameters,
+      mu
+    );
+  }
+
+  void negloglik(
+      const arma::vec& y,
+      const arma::vec& mu,
+      const arma::vec& family_parameters,
+      double& negloglik_value
+  ) const override
+  {
+    family_.negloglik(
+      y,
+      mu,
+      family_parameters,
+      negloglik_value
+    );
+  }
+
+  void grad(
+      const arma::vec& y,
+      const arma::vec& eta,
+      const arma::vec& mu,
+      const arma::vec& family_parameters,
+      const arma::vec& link_parameters,
+      arma::vec& d_negloglik_d_mu,
+      arma::vec& d_mu_d_eta,
+      arma::mat& d_mu_d_link_parameters,
+      arma::vec& d_negloglik_d_eta,
+      arma::vec& d_negloglik_d_family_parameters,
+      arma::vec& d_negloglik_d_link_parameters
+  ) const override
+  {
+    family_.grad(
+      y,
+      mu,
+      family_parameters,
+      d_negloglik_d_mu,
+      d_negloglik_d_family_parameters
+    );
+
+    link_func_.grad(
+      eta,
+      link_parameters,
+      d_mu_d_eta,
+      d_mu_d_link_parameters
+    );
+
+    const double dispersion =
+      family_parameters[0];
+
+    if (dispersion <= poisson_fallback_eps_) {
+      d_negloglik_d_eta =
+        mu - y;
+    } else {
+      d_negloglik_d_eta =
+        (mu - y) /
+        (1.0 + dispersion * mu);
+    }
+
+    d_negloglik_d_link_parameters.reset();
+  }
+};
+
 inline double effective_parameter_count(
     const EcountgmifsContext& context
 )
@@ -656,6 +806,29 @@ SEXP example_create_nb2_family(
         dispersion_initial,
         dispersion_lower_bound,
         dispersion_upper_bound
+    ),
+    true
+  );
+}
+
+// [[Rcpp::export]]
+SEXP example_create_nb2_log_family_link(
+    const double mu_min_cap = 1e-12,
+    const double mu_max_cap = 1e12,
+    const double poisson_fallback_eps = 1e-8,
+    const double dispersion_initial = 1e-4,
+    const double dispersion_lower_bound = 1e-12,
+    const double dispersion_upper_bound = 1e12
+)
+{
+  return Rcpp::XPtr<IEcountgmifsFamilyLink>(
+    new ecountgmifs_examples::NB2LogFamilyLink(
+      mu_min_cap,
+      mu_max_cap,
+      poisson_fallback_eps,
+      dispersion_initial,
+      dispersion_lower_bound,
+      dispersion_upper_bound
     ),
     true
   );

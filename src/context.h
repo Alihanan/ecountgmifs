@@ -8,6 +8,7 @@
 #include <limits>
 #include <vector>
 #include <algorithm>
+#include <memory>
 
 #include "../inst/include/ecountgmifs/api.h"
 #include "enums.h"
@@ -51,8 +52,152 @@ inline void check_input_dimensions(
 }
 
 
+struct EcountgmifsDefaultFamilyLink final : public IEcountgmifsFamilyLink
+{
+  const IEcountgmifsFamily& family;
+  const IEcountgmifsLinkFunc& link_func;
+
+  EcountgmifsDefaultFamilyLink(
+      const IEcountgmifsFamily& family_,
+      const IEcountgmifsLinkFunc& link_func_
+  ) :
+    family(family_),
+    link_func(link_func_)
+  {}
+
+  std::string family_name() const override
+  {
+    return family.name();
+  }
+
+  std::string link_name() const override
+  {
+    return link_func.name();
+  }
+
+  arma::uword family_parameter_count() const noexcept override
+  {
+    return family.parameter_count();
+  }
+
+  arma::uword link_parameter_count() const noexcept override
+  {
+    return link_func.parameter_count();
+  }
+
+  arma::vec family_initial_parameters() const override
+  {
+    return family.initial_parameters();
+  }
+
+  arma::vec family_parameter_lower_bounds() const override
+  {
+    return family.parameter_lower_bounds();
+  }
+
+  arma::vec family_parameter_upper_bounds() const override
+  {
+    return family.parameter_upper_bounds();
+  }
+
+  arma::vec link_initial_parameters() const override
+  {
+    return link_func.initial_parameters();
+  }
+
+  arma::vec link_parameter_lower_bounds() const override
+  {
+    return link_func.parameter_lower_bounds();
+  }
+
+  arma::vec link_parameter_upper_bounds() const override
+  {
+    return link_func.parameter_upper_bounds();
+  }
+
+  void inverse(
+      const arma::vec& eta,
+      const arma::vec& link_parameters,
+      arma::vec& mu
+  ) const override
+  {
+    link_func.inverse(
+      eta,
+      link_parameters,
+      mu
+    );
+  }
+
+  void negloglik(
+      const arma::vec& y,
+      const arma::vec& mu,
+      const arma::vec& family_parameters,
+      double& negloglik_value
+  ) const override
+  {
+    family.negloglik(
+      y,
+      mu,
+      family_parameters,
+      negloglik_value
+    );
+  }
+
+  void grad(
+      const arma::vec& y,
+      const arma::vec& eta,
+      const arma::vec& mu,
+      const arma::vec& family_parameters,
+      const arma::vec& link_parameters,
+      arma::vec& d_negloglik_d_mu,
+      arma::vec& d_mu_d_eta,
+      arma::mat& d_mu_d_link_parameters,
+      arma::vec& d_negloglik_d_eta,
+      arma::vec& d_negloglik_d_family_parameters,
+      arma::vec& d_negloglik_d_link_parameters
+  ) const override
+  {
+    family.grad(
+      y,
+      mu,
+      family_parameters,
+      d_negloglik_d_mu,
+      d_negloglik_d_family_parameters
+    );
+
+    link_func.grad(
+      eta,
+      link_parameters,
+      d_mu_d_eta,
+      d_mu_d_link_parameters
+    );
+
+    d_negloglik_d_eta =
+      d_negloglik_d_mu %
+      d_mu_d_eta;
+
+    if (link_parameter_count() == 0) {
+      d_negloglik_d_link_parameters.reset();
+    } else {
+      d_negloglik_d_link_parameters =
+        d_mu_d_link_parameters.t() *
+        d_negloglik_d_mu;
+    }
+  }
+};
+
+
 struct EcountgmifsInputInternal
 {
+private:
+  const IEcountgmifsFamilyLink* supplied_family_link_;
+  const IEcountgmifsFamily* family_;
+  const IEcountgmifsLinkFunc* link_func_;
+
+  std::unique_ptr<EcountgmifsDefaultFamilyLink>
+    default_family_link_;
+
+public:
   EcountgmifsInput api;
 
   EcountgmifsInputInternal(
@@ -69,8 +214,40 @@ struct EcountgmifsInputInternal
     double enet_alpha,
     SEXP family,
     SEXP link_func,
-    Rcpp::Nullable<Rcpp::List> criteria
+    Rcpp::Nullable<Rcpp::List> criteria,
+    SEXP family_link
   ) :
+    supplied_family_link_(
+      resolve_optional_family_link_ptr(
+        family_link
+      )
+    ),
+
+    family_(
+      resolve_optional_family_ptr(
+        family,
+        supplied_family_link_ == nullptr
+      )
+    ),
+
+    link_func_(
+      resolve_optional_link_ptr(
+        link_func,
+        supplied_family_link_ == nullptr
+      )
+    ),
+
+    default_family_link_(
+      supplied_family_link_ == nullptr
+        ? std::make_unique<
+            EcountgmifsDefaultFamilyLink
+          >(
+            *family_,
+            *link_func_
+          )
+        : nullptr
+    ),
+
     api {
     X,
     y,
@@ -90,8 +267,11 @@ struct EcountgmifsInputInternal
     -1.0 * arma::lgamma(ytest + 1.0),
     -1.0 * arma::lgamma(yorig + 1.0),
 
-    resolve_family_ptr(family),
-    resolve_link_ptr(link_func),
+    family_,
+    link_func_,
+    supplied_family_link_ != nullptr
+      ? supplied_family_link_
+      : default_family_link_.get(),
     resolve_criteria_ptrs(criteria)
   }
   {
@@ -158,20 +338,28 @@ struct EcountgmifsInputInternal
       Rcpp::Named("q_test") = api.wtest.n_cols,
       Rcpp::Named("family") =
         Rcpp::List::create(
-          Rcpp::Named(api.family->name()) =
+          Rcpp::Named(
+            api.family_link->family_name()
+          ) =
             Rcpp::List::create(
               Rcpp::Named("parameter_count") =
-                api.family->parameter_count()
+                api.family_link->
+                  family_parameter_count()
             )
         ),
         Rcpp::Named("link_func") =
           Rcpp::List::create(
-            Rcpp::Named(api.link_func->name()) =
+            Rcpp::Named(
+              api.family_link->link_name()
+            ) =
               Rcpp::List::create(
                 Rcpp::Named("parameter_count") =
-                  api.link_func->parameter_count()
+                  api.family_link->
+                    link_parameter_count()
               )
           ),
+          Rcpp::Named("family_link_supplied") =
+            supplied_family_link_ != nullptr,
           Rcpp::Named("enet_alpha") = api.enet_alpha,
           Rcpp::Named("has_prior") = api.has_prior
     );
@@ -193,27 +381,81 @@ struct EcountgmifsInputInternal
     return out;
   }
 
-
-  static const IEcountgmifsFamily* resolve_family_ptr(
-      SEXP family
+private:
+  static const IEcountgmifsFamilyLink*
+  resolve_optional_family_link_ptr(
+      SEXP family_link
   )
   {
-    Rcpp::XPtr<IEcountgmifsFamily> ptr(family);
+    if (Rf_isNull(family_link)) {
+      return nullptr;
+    }
 
-    if (ptr.get() == nullptr)
-      Rcpp::stop("family contains a null external pointer");
+    Rcpp::XPtr<IEcountgmifsFamilyLink> ptr(
+      family_link
+    );
+
+    if (ptr.get() == nullptr) {
+      Rcpp::stop(
+        "family_link contains a null external pointer"
+      );
+    }
 
     return ptr.get();
   }
 
-  static const IEcountgmifsLinkFunc* resolve_link_ptr(
-      SEXP link_func
+  static const IEcountgmifsFamily*
+  resolve_optional_family_ptr(
+      SEXP family,
+      bool required
   )
   {
-    Rcpp::XPtr<IEcountgmifsLinkFunc> ptr(link_func);
+    if (Rf_isNull(family)) {
+      if (required) {
+        Rcpp::stop(
+          "family must be supplied when family_link is NULL"
+        );
+      }
 
-    if (ptr.get() == nullptr)
-      Rcpp::stop("link_func contains a null external pointer");
+      return nullptr;
+    }
+
+    Rcpp::XPtr<IEcountgmifsFamily> ptr(family);
+
+    if (ptr.get() == nullptr) {
+      Rcpp::stop(
+        "family contains a null external pointer"
+      );
+    }
+
+    return ptr.get();
+  }
+
+  static const IEcountgmifsLinkFunc*
+  resolve_optional_link_ptr(
+      SEXP link_func,
+      bool required
+  )
+  {
+    if (Rf_isNull(link_func)) {
+      if (required) {
+        Rcpp::stop(
+          "link_func must be supplied when family_link is NULL"
+        );
+      }
+
+      return nullptr;
+    }
+
+    Rcpp::XPtr<IEcountgmifsLinkFunc> ptr(
+      link_func
+    );
+
+    if (ptr.get() == nullptr) {
+      Rcpp::stop(
+        "link_func contains a null external pointer"
+      );
+    }
 
     return ptr.get();
   }
@@ -425,8 +667,8 @@ public:
         ), // beta
 
         control.theta_initial, // theta
-        input.family->initial_parameters(),
-        input.link_func->initial_parameters()
+        input.family_link->family_initial_parameters(),
+        input.family_link->link_initial_parameters()
       },
 
       arma::vec(
@@ -463,20 +705,20 @@ public:
   {
     check_initial_bounds(
       api.param.param.family_parameters,
-      input.family->parameter_lower_bounds(),
-      input.family->parameter_upper_bounds(),
-      input.family->parameter_count(),
+      input.family_link->family_parameter_lower_bounds(),
+      input.family_link->family_parameter_upper_bounds(),
+      input.family_link->family_parameter_count(),
       "family parameters"
     );
 
     check_initial_bounds(
       api.param.param.link_parameters,
-      input.link_func->parameter_lower_bounds(),
-      input.link_func->parameter_upper_bounds(),
-      input.link_func->parameter_count(),
+      input.family_link->link_parameter_lower_bounds(),
+      input.family_link->link_parameter_upper_bounds(),
+      input.family_link->link_parameter_count(),
       "link parameters"
     );
-
+    initialize_criteria();
     refresh_after_constructor();
   }
 
@@ -546,96 +788,6 @@ public:
   ) noexcept
   {
     api.iteration = iteration;
-  }
-
-  void initialize_for_fit(
-      const Rcpp::CharacterVector& criterion_names
-  )
-  {
-    check_vector_finite(
-      api.param.mu,
-      "initial mu"
-    );
-
-    update_negloglik();
-
-    api.param.active_set.zeros();
-    api.iteration = 0;
-    api.pseudo_r2 = arma::datum::nan;
-
-    api.criteria = Rcpp::NumericVector(
-      criterion_names.size(),
-      NA_REAL
-    );
-
-    api.criteria.attr("names") =
-      Rcpp::clone(criterion_names);
-  }
-
-  void evaluate_beta_step(
-      const arma::vec& delta_beta,
-      arma::vec& delta_xbeta,
-      arma::vec& trial_eta,
-      arma::vec& trial_mu,
-      double& trial_negloglik
-  ) const
-  {
-    if (
-        delta_beta.n_elem !=
-          api.param.param.beta.n_elem
-    ) {
-      Rcpp::stop(
-        "incorrect beta-step parameter count"
-      );
-    }
-
-    delta_xbeta =
-      input.X * delta_beta;
-
-    trial_eta =
-      api.param.eta + delta_xbeta;
-
-    input.link_func->inverse(
-        trial_eta,
-        api.param.param.link_parameters,
-        trial_mu
-    );
-
-    check_vector_finite(
-      trial_mu,
-      "trial mu"
-    );
-
-    input.family->negloglik(
-        input.y,
-        trial_mu,
-        api.param.param.family_parameters,
-        trial_negloglik
-    );
-
-    check_finite_scalar(
-      trial_negloglik,
-      "trial negloglik"
-    );
-  }
-
-  void commit_beta_step(
-      const arma::vec& delta_beta
-  )
-  {
-    if (
-        delta_beta.n_elem !=
-          api.param.param.beta.n_elem
-    ) {
-      Rcpp::stop(
-        "incorrect beta-step parameter count"
-      );
-    }
-
-    api.param.param.beta +=
-      delta_beta;
-
-    refresh_after_beta();
   }
 
   void set_beta(
@@ -745,6 +897,42 @@ public:
   {
     update_negloglik();
   }
+  void evaluate_criteria(
+      const EcountgmifsContext& context
+  )
+  {
+    if (
+        api.criteria.size() !=
+          static_cast<R_xlen_t>(
+            input.criteria.size()
+          )
+    ) {
+      Rcpp::stop(
+        "criterion storage size mismatch"
+      );
+    }
+
+    for (
+        std::size_t i = 0;
+        i < input.criteria.size();
+        ++i
+    ) {
+      const double value =
+        input.criteria[i]->evaluate(
+            context
+        );
+
+      check_finite_scalar(
+        value,
+        input.criteria[i]->name().c_str()
+      );
+
+      api.criteria[
+      static_cast<R_xlen_t>(i)
+      ] =
+        value;
+    }
+  }
 
   Rcpp::List to_list() const
   {
@@ -839,6 +1027,37 @@ public:
   }
 
 private:
+  void initialize_criteria()
+  {
+    const R_xlen_t criterion_count =
+      static_cast<R_xlen_t>(
+        input.criteria.size()
+      );
+
+    api.criteria =
+      Rcpp::NumericVector(
+        criterion_count,
+        NA_REAL
+      );
+
+    Rcpp::CharacterVector criterion_names(
+        criterion_count
+    );
+
+    for (
+        std::size_t i = 0;
+        i < input.criteria.size();
+        ++i
+    ) {
+      criterion_names[
+      static_cast<R_xlen_t>(i)
+      ] =
+        input.criteria[i]->name();
+    }
+
+    api.criteria.attr("names") =
+      criterion_names;
+  }
   static void copy_parameter_vector(
       const arma::vec& source,
       arma::vec& destination,
@@ -886,12 +1105,16 @@ private:
 
   void refresh_after_constructor()
   {
-    /*
-     * Both roots changed during construction. Each root starts its own
-     * downstream cascade; duplicated constructor work is acceptable.
-     */
-    update_xbeta();
-    update_wtheta();
+    api.param.xbeta =
+      input.X *
+      api.param.param.beta;
+
+    api.param.wtheta =
+      input.w *
+      api.param.param.theta;
+
+    update_active_set();
+    update_eta();
   }
 
   void update_xbeta()
@@ -923,7 +1146,7 @@ private:
 
   void update_mu()
   {
-    input.link_func->inverse(
+    input.family_link->inverse(
         api.param.eta,
         api.param.param.link_parameters,
         api.param.mu
@@ -939,7 +1162,7 @@ private:
 
   void update_negloglik()
   {
-    input.family->negloglik(
+    input.family_link->negloglik(
         input.y,
         api.param.mu,
         api.param.param.family_parameters,
@@ -967,6 +1190,7 @@ struct EcountgmifsGradientsInternal
 private:
   const EcountgmifsInput& input;
   const EcountgmifsStateInternal& state;
+  arma::vec d_negloglik_d_eta;
   EcountgmifsGradients api;
 
 public:
@@ -976,6 +1200,10 @@ public:
   ) :
   input(input_),
   state(state_),
+  d_negloglik_d_eta(
+    input.X.n_rows,
+    arma::fill::zeros
+  ),
   api {
     arma::vec(
       input.X.n_rows,
@@ -992,17 +1220,17 @@ public:
 
     arma::mat(
       input.X.n_rows,
-      input.link_func->parameter_count(),
+      input.family_link->link_parameter_count(),
       arma::fill::zeros
     ), // d_mu_d_link_parameters
 
     arma::vec(
-      input.family->parameter_count(),
+      input.family_link->family_parameter_count(),
       arma::fill::zeros
     ), // d_negloglik_d_family_parameters
 
     arma::vec(
-      input.link_func->parameter_count(),
+      input.family_link->link_parameter_count(),
       arma::fill::zeros
     ), // d_negloglik_d_link_parameters
 
@@ -1036,14 +1264,11 @@ public:
 
   const arma::vec& update_beta_gradient()
   {
-    update_mean_derivatives();
+    update_derivatives();
 
     api.d_negloglik_d_beta =
       api.d_eta_d_beta.t() *
-      (
-          api.d_negloglik_d_mu %
-            api.d_mu_d_eta
-      );
+      d_negloglik_d_eta;
 
     check_vector_finite(
       api.d_negloglik_d_beta,
@@ -1064,7 +1289,7 @@ public:
       "theta"
     );
 
-    update_mean_derivatives();
+    update_derivatives();
 
     arma::vec gradient_view(
         out,
@@ -1075,10 +1300,7 @@ public:
 
     gradient_view =
       api.d_eta_d_theta.t() *
-      (
-          api.d_negloglik_d_mu %
-            api.d_mu_d_eta
-      );
+      d_negloglik_d_eta;
   }
 
   void write_family_gradient(
@@ -1088,11 +1310,11 @@ public:
   {
     check_gradient_size(
       n,
-      input.family->parameter_count(),
+      input.family_link->family_parameter_count(),
       "family"
     );
 
-    update_family_derivatives();
+    update_derivatives();
 
     std::copy_n(
       api.d_negloglik_d_family_parameters.memptr(),
@@ -1108,15 +1330,11 @@ public:
   {
     check_gradient_size(
       n,
-      input.link_func->parameter_count(),
+      input.family_link->link_parameter_count(),
       "link"
     );
 
-    update_mean_derivatives();
-
-    api.d_negloglik_d_link_parameters =
-      api.d_mu_d_link_parameters.t() *
-      api.d_negloglik_d_mu;
+    update_derivatives();
 
     std::copy_n(
       api.d_negloglik_d_link_parameters.memptr(),
@@ -1140,26 +1358,20 @@ private:
     }
   }
 
-  void update_family_derivatives()
+  void update_derivatives()
   {
-    input.family->grad(
-        input.y,
-        state.mu(),
-        state.family_parameters(),
-        api.d_negloglik_d_mu,
-        api.d_negloglik_d_family_parameters
-    );
-  }
-
-  void update_mean_derivatives()
-  {
-    update_family_derivatives();
-
-    input.link_func->grad(
-        state.eta(),
-        state.link_parameters(),
-        api.d_mu_d_eta,
-        api.d_mu_d_link_parameters
+    input.family_link->grad(
+      input.y,
+      state.eta(),
+      state.mu(),
+      state.family_parameters(),
+      state.link_parameters(),
+      api.d_negloglik_d_mu,
+      api.d_mu_d_eta,
+      api.d_mu_d_link_parameters,
+      d_negloglik_d_eta,
+      api.d_negloglik_d_family_parameters,
+      api.d_negloglik_d_link_parameters
     );
   }
 };
@@ -1478,7 +1690,7 @@ public:
   path(path_),
   api {},
   saturated_family_parameters_(
-    input_.family->initial_parameters()
+    input_.family_link->family_initial_parameters()
   ),
 
   nonpen_optimizer(
@@ -1495,8 +1707,8 @@ public:
 
   family_optimizer(
     state_.family_parameters(),
-    input_.family->parameter_lower_bounds(),
-    input_.family->parameter_upper_bounds(),
+    input_.family_link->family_parameter_lower_bounds(),
+    input_.family_link->family_parameter_upper_bounds(),
     &EcountgmifsStagewiseInternal::family_objective,
     this,
     control_.nlopt_algorithm,
@@ -1507,8 +1719,8 @@ public:
 
   link_optimizer(
     state_.link_parameters(),
-    input_.link_func->parameter_lower_bounds(),
-    input_.link_func->parameter_upper_bounds(),
+    input_.family_link->link_parameter_lower_bounds(),
+    input_.family_link->link_parameter_upper_bounds(),
     &EcountgmifsStagewiseInternal::link_objective,
     this,
     control_.nlopt_algorithm,
@@ -1517,10 +1729,17 @@ public:
     control_.nlopt_maxeval
   )
   {
-    api.delta_beta.zeros(input.X.n_cols);
-    api.delta_xbeta.zeros(input.X.n_rows);
-    api.trial_nu_linear.zeros(input.X.n_rows);
-    api.trial_mu_mean.zeros(input.X.n_rows);
+    api.beta_start.zeros(
+      input.X.n_cols
+    );
+
+    api.beta_trial.zeros(
+      input.X.n_cols
+    );
+
+    api.delta_beta.zeros(
+      input.X.n_cols
+    );
 
     api.epsilon =
       control.epsilon_start;
@@ -1569,7 +1788,7 @@ public:
 
   void fit()
   {
-    initialize();
+    begin_fit();
     fit_null_model();
     fit_saturated_model();
 
@@ -1584,42 +1803,24 @@ public:
   }
 
 private:
-  void initialize()
+  void begin_fit()
   {
-    Rcpp::CharacterVector criterion_names(
-        static_cast<R_xlen_t>(
-          input.criteria.size()
-        )
-    );
-
-    for (std::size_t i = 0; i < input.criteria.size(); ++i) {
-      criterion_names[
-      static_cast<R_xlen_t>(i)
-      ] = input.criteria[i]->name();
+    if (
+        api.phase !=
+          EnumStagewisePhase::STAGEWISE_NOT_STARTED
+    ) {
+      Rcpp::stop(
+        "EcountgmifsStagewiseInternal::fit() "
+        "may only be called once"
+      );
     }
-
-    state.initialize_for_fit(
-      criterion_names
-    );
-
-    api.delta_beta.zeros();
-    api.delta_xbeta.zeros();
-    api.trial_nu_linear.zeros();
-    api.trial_mu_mean.zeros();
-
-    api.epsilon =
-      control.epsilon_start;
-
-    api.negloglik_trial =
-      arma::datum::nan;
-
-    api.halving_count = 0;
 
     api.phase =
       EnumStagewisePhase::STAGEWISE_NONPEN;
 
     api.termination_reason =
-      EnumStagewiseTerminationReason::STAGEWISE_RUNNING;
+      EnumStagewiseTerminationReason::
+        STAGEWISE_RUNNING;
 
     api.termination_detail =
       "Ready for non-penalized fitting.";
@@ -2008,8 +2209,8 @@ private:
 
     NloptOptimizerInternal saturated_family_optimizer(
         saturated_family_parameters_,
-        input.family->parameter_lower_bounds(),
-        input.family->parameter_upper_bounds(),
+        input.family_link->family_parameter_lower_bounds(),
+        input.family_link->family_parameter_upper_bounds(),
         &EcountgmifsStagewiseInternal::saturated_family_objective,
         this,
         static_cast<int>(NLOPT_LN_NELDERMEAD),
@@ -2092,92 +2293,15 @@ private:
           );
       }
 
-      const arma::vec& beta_gradient =
-        gradient.update_beta_gradient();
-
-      prepare_elastic_net_gradient(
-        beta_gradient,
-        enet_workspace
+      bool converged = beta_optimize(
+        enet_workspace,
+        iteration,
+        negloglik_previous
       );
 
-      api.halving_count = 0;
-
-      bool beta_step_accepted =
-        false;
-
-      while (api.epsilon >= control.epsilon_min) {
-        solve_elastic_net_1D_weight_prepared_inplace(
-          input.weight_vec,
-          input.enet_alpha,
-          api.epsilon,
-          control.enet_abs_tol,
-          control.enet_rel_tol,
-          control.enet_max_iter,
-          false,
-          enet_workspace,
-          api.delta_beta
-        );
-
-        if (api.delta_beta.is_zero()) {
-          finish_stagewise(
-            EnumStagewiseTerminationReason::
-              STAGEWISE_BETA_STEP_ZERO,
-              "The stagewise beta step is zero."
-          );
-
-          return;
-        }
-
-        state.evaluate_beta_step(
-          api.delta_beta,
-          api.delta_xbeta,
-          api.trial_nu_linear,
-          api.trial_mu_mean,
-          api.negloglik_trial
-        );
-
-        if (
-            api.negloglik_trial <=
-              negloglik_previous
-        ) {
-          state.commit_beta_step(
-            api.delta_beta
-          );
-
-          beta_step_accepted =
-            true;
-
-          break;
-        }
-
-        api.epsilon *=
-          0.5;
-
-        ++api.halving_count;
-
-        ECOUNTGMIFS_VERBOSE(
-          control.verbose,
-          "stagewise: iter="
-          << iteration
-          << " reject_beta"
-          << ", halving="
-          << api.halving_count
-          << ", epsilon="
-          << api.epsilon
-          << ", current_negloglik="
-          << negloglik_previous
-          << ", trial_negloglik="
-          << api.negloglik_trial
-        );
-      }
-
-      if (!beta_step_accepted) {
-        finish_stagewise(
-          EnumStagewiseTerminationReason::
-            STAGEWISE_EPSILON_MIN_REACHED,
-            "Epsilon fell below epsilon_min before a beta step was accepted."
-        );
-
+      if (
+          converged == true
+      ) {
         return;
       }
 
@@ -2313,6 +2437,132 @@ private:
     );
   }
 
+  bool beta_optimize(
+      ElasticNetWeightWorkspace& enet_workspace,
+      uint64_t iteration,
+      double negloglik_previous
+  )
+  {
+    /*
+     * Immutable beta for every trial in this halving sequence.
+     */
+    api.beta_start =
+      state.beta();
+
+    const arma::vec& beta_gradient =
+      gradient.update_beta_gradient();
+
+    prepare_elastic_net_gradient(
+      beta_gradient,
+      enet_workspace
+    );
+
+    api.halving_count = 0;
+
+    while (
+        api.epsilon >=
+          control.epsilon_min
+    ) {
+      solve_elastic_net_1D_weight_prepared_inplace(
+        input.weight_vec,
+        input.enet_alpha,
+        api.epsilon,
+        control.enet_abs_tol,
+        control.enet_rel_tol,
+        control.enet_max_iter,
+        false,
+        enet_workspace,
+        api.delta_beta
+      );
+
+      if (api.delta_beta.is_zero()) {
+        /*
+         * State may contain the preceding rejected trial.
+         */
+        state.set_beta(
+          api.beta_start
+        );
+
+        finish_stagewise(
+          EnumStagewiseTerminationReason::
+            STAGEWISE_BETA_STEP_ZERO,
+            "The stagewise beta step is zero."
+        );
+
+        return true;
+      }
+
+      /*
+       * Every trial is formed independently from the unchanged
+       * iteration-start beta.
+       */
+      api.beta_trial =
+        api.beta_start;
+
+      api.beta_trial +=
+        api.delta_beta;
+
+      /*
+       * Directly install and fully evaluate the candidate in State.
+       */
+      state.set_beta(
+        api.beta_trial
+      );
+
+      api.negloglik_trial =
+        state.negloglik();
+
+      if (
+          api.negloglik_trial <=
+            negloglik_previous
+      ) {
+        /*
+         * The accepted candidate is already the current State.
+         */
+        return false;
+      }
+
+      /*
+       * Log the epsilon that produced the rejected candidate
+       * before halving it for the next attempt.
+       */
+      ++api.halving_count;
+
+      ECOUNTGMIFS_VERBOSE(
+        control.verbose,
+        "stagewise: iter="
+        << iteration
+        << " reject_beta"
+        << ", halving="
+        << api.halving_count
+        << ", epsilon="
+        << api.epsilon
+        << ", current_negloglik="
+        << negloglik_previous
+        << ", trial_negloglik="
+        << api.negloglik_trial
+      );
+
+      api.epsilon *=
+        0.5;
+    }
+
+    /*
+     * The final rejected candidate is still stored in State.
+     */
+    state.set_beta(
+      api.beta_start
+    );
+
+    finish_stagewise(
+      EnumStagewiseTerminationReason::
+        STAGEWISE_EPSILON_MIN_REACHED,
+        "Epsilon fell below epsilon_min before a beta step was accepted."
+    );
+
+    return true;
+  }
+
   void finish_stagewise(
       EnumStagewiseTerminationReason reason,
       const char* detail
@@ -2378,7 +2628,7 @@ private:
 
   void refresh_saturated_negloglik()
   {
-    input.family->negloglik(
+    input.family_link->negloglik(
         input.y,
         input.y,
         saturated_family_parameters_,
@@ -2587,7 +2837,8 @@ struct EcountgmifsContextInternal
     int nlopt_algorithm,
     double nlopt_xtol_rel,
     double nlopt_ftol_rel,
-    int nlopt_maxeval
+    int nlopt_maxeval,
+    SEXP family_link
   ) :
     input(
       X,
@@ -2603,7 +2854,8 @@ struct EcountgmifsContextInternal
       enet_alpha,
       family,
       link_func,
-      criteria
+      criteria,
+      family_link
     ),
     control(
       input.api,

@@ -5,8 +5,8 @@ ecountgmifs_call_context_criterion <- function(criterion_ptr, negloglik = 100.0,
     .Call(`_ecountgmifs_ecountgmifs_call_context_criterion`, criterion_ptr, negloglik, iteration, dispersion, epsilon, initialized, n, p, q, beta_value, beta_nonzero_value, nnz, enet_alpha, include_data)
 }
 
-ecountgmifs_cpp <- function(X, y, w, offset, yorig, Xtest, ytest, wtest, offsettest, weight_vec, enet_alpha, epsilon_start, epsilon_max, epsilon_min_tol, tol, iteration_max, family, link_func, criteria, loglik_reltol_cutoff, enet_abs_tol, enet_rel_tol, enet_max_iter, verbose, include_data, state_track_strategy, state_track_freq, theta_initial, theta_lower_bounds, theta_upper_bounds, nlopt_algorithm, nlopt_xtol_rel, nlopt_ftol_rel, nlopt_maxeval) {
-    .Call(`_ecountgmifs_ecountgmifs_cpp`, X, y, w, offset, yorig, Xtest, ytest, wtest, offsettest, weight_vec, enet_alpha, epsilon_start, epsilon_max, epsilon_min_tol, tol, iteration_max, family, link_func, criteria, loglik_reltol_cutoff, enet_abs_tol, enet_rel_tol, enet_max_iter, verbose, include_data, state_track_strategy, state_track_freq, theta_initial, theta_lower_bounds, theta_upper_bounds, nlopt_algorithm, nlopt_xtol_rel, nlopt_ftol_rel, nlopt_maxeval)
+ecountgmifs_cpp <- function(X, y, w, offset, yorig, Xtest, ytest, wtest, offsettest, weight_vec, enet_alpha, epsilon_start, epsilon_max, epsilon_min_tol, tol, iteration_max, family, link_func, criteria, loglik_reltol_cutoff, enet_abs_tol, enet_rel_tol, enet_max_iter, verbose, include_data, state_track_strategy, state_track_freq, theta_initial, theta_lower_bounds, theta_upper_bounds, nlopt_algorithm, nlopt_xtol_rel, nlopt_ftol_rel, nlopt_maxeval, family_link = NULL) {
+    .Call(`_ecountgmifs_ecountgmifs_cpp`, X, y, w, offset, yorig, Xtest, ytest, wtest, offsettest, weight_vec, enet_alpha, epsilon_start, epsilon_max, epsilon_min_tol, tol, iteration_max, family, link_func, criteria, loglik_reltol_cutoff, enet_abs_tol, enet_rel_tol, enet_max_iter, verbose, include_data, state_track_strategy, state_track_freq, theta_initial, theta_lower_bounds, theta_upper_bounds, nlopt_algorithm, nlopt_xtol_rel, nlopt_ftol_rel, nlopt_maxeval, family_link)
 }
 
 example_create_log_link <- function() {
@@ -23,6 +23,10 @@ example_create_poisson_family <- function(mu_min_cap = 1e-12, mu_max_cap = 1e12)
 
 example_create_nb2_family <- function(mu_min_cap = 1e-12, mu_max_cap = 1e12, poisson_fallback_eps = 1e-8, dispersion_initial = 1e-4, dispersion_lower_bound = 1e-12, dispersion_upper_bound = 1e12) {
     .Call(`_ecountgmifs_example_create_nb2_family`, mu_min_cap, mu_max_cap, poisson_fallback_eps, dispersion_initial, dispersion_lower_bound, dispersion_upper_bound)
+}
+
+example_create_nb2_log_family_link <- function(mu_min_cap = 1e-12, mu_max_cap = 1e12, poisson_fallback_eps = 1e-8, dispersion_initial = 1e-4, dispersion_lower_bound = 1e-12, dispersion_upper_bound = 1e12) {
+    .Call(`_ecountgmifs_example_create_nb2_log_family_link`, mu_min_cap, mu_max_cap, poisson_fallback_eps, dispersion_initial, dispersion_lower_bound, dispersion_upper_bound)
 }
 
 example_create_aic_criterion <- function() {

@@ -65,7 +65,8 @@ Rcpp::List ecountgmifs_cpp(
     int nlopt_algorithm,
     double nlopt_xtol_rel,
     double nlopt_ftol_rel,
-    int nlopt_maxeval
+    int nlopt_maxeval,
+    SEXP family_link = R_NilValue
 ) {
   EcountgmifsContextInternal ctx(
       X,
@@ -108,7 +109,8 @@ Rcpp::List ecountgmifs_cpp(
       nlopt_algorithm,
       nlopt_xtol_rel,
       nlopt_ftol_rel,
-      nlopt_maxeval
+      nlopt_maxeval,
+      family_link
   );
 
 

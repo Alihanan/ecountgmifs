@@ -122,6 +122,105 @@ struct IEcountgmifsFamily
 };
 
 
+/*
+ * Combined family-link interface.
+ *
+ * A custom implementation may evaluate d(negative log-likelihood)/d(eta)
+ * directly using a numerically stable fused formula. When no combined
+ * implementation is supplied, the package constructs an internal adapter
+ * that delegates to IEcountgmifsFamily and IEcountgmifsLinkFunc and applies
+ * the ordinary chain rule.
+ */
+struct IEcountgmifsFamilyLink
+{
+  virtual ~IEcountgmifsFamilyLink() = default;
+
+  virtual std::string family_name() const = 0;
+  virtual std::string link_name() const = 0;
+
+  virtual arma::uword family_parameter_count() const noexcept = 0;
+  virtual arma::uword link_parameter_count() const noexcept = 0;
+
+  virtual arma::vec family_initial_parameters() const
+  {
+    return arma::vec(
+      family_parameter_count(),
+      arma::fill::zeros
+    );
+  }
+
+  virtual arma::vec family_parameter_lower_bounds() const
+  {
+    arma::vec lower(family_parameter_count());
+    lower.fill(-arma::datum::inf);
+    return lower;
+  }
+
+  virtual arma::vec family_parameter_upper_bounds() const
+  {
+    arma::vec upper(family_parameter_count());
+    upper.fill(arma::datum::inf);
+    return upper;
+  }
+
+  virtual arma::vec link_initial_parameters() const
+  {
+    return arma::vec(
+      link_parameter_count(),
+      arma::fill::zeros
+    );
+  }
+
+  virtual arma::vec link_parameter_lower_bounds() const
+  {
+    arma::vec lower(link_parameter_count());
+    lower.fill(-arma::datum::inf);
+    return lower;
+  }
+
+  virtual arma::vec link_parameter_upper_bounds() const
+  {
+    arma::vec upper(link_parameter_count());
+    upper.fill(arma::datum::inf);
+    return upper;
+  }
+
+  virtual void inverse(
+      const arma::vec& eta,
+      const arma::vec& link_parameters,
+      arma::vec& mu
+  ) const = 0;
+
+  virtual void negloglik(
+      const arma::vec& y,
+      const arma::vec& mu,
+      const arma::vec& family_parameters,
+      double& negloglik
+  ) const = 0;
+
+  /*
+   * Fill all derivatives needed by the fitting code.
+   *
+   * d_negloglik_d_eta is the derivative used for beta and theta. A custom
+   * combined implementation may calculate it directly rather than as
+   * d_negloglik_d_mu % d_mu_d_eta.
+   */
+  virtual void grad(
+      const arma::vec& y,
+      const arma::vec& eta,
+      const arma::vec& mu,
+      const arma::vec& family_parameters,
+      const arma::vec& link_parameters,
+      arma::vec& d_negloglik_d_mu,
+      arma::vec& d_mu_d_eta,
+      arma::mat& d_mu_d_link_parameters,
+      arma::vec& d_negloglik_d_eta,
+      arma::vec& d_negloglik_d_family_parameters,
+      arma::vec& d_negloglik_d_link_parameters
+  ) const = 0;
+};
+
+
 
 /*
  * Public read-only input struct.
@@ -149,8 +248,16 @@ struct EcountgmifsInput {
   const arma::vec test_y_one_lgamma;
   const arma::vec orig_y_one_lgamma;
 
+  /*
+   * family_link is always non-null internally.
+   *
+   * If the user supplies a combined implementation, family and link_func may
+   * be null. Otherwise family/link_func are retained and family_link points to
+   * an internal delegating adapter.
+   */
   const IEcountgmifsFamily* family;
   const IEcountgmifsLinkFunc* link_func;
+  const IEcountgmifsFamilyLink* family_link;
   std::vector<const IEcountgmifsCriterion*> criteria;
 };
 
@@ -233,10 +340,23 @@ struct EcountgmifsStagewise
   EnumStagewiseTerminationReason termination_reason =
     EnumStagewiseTerminationReason::STAGEWISE_NOT_INITIALIZED;
 
+  /*
+   * Immutable beta at the beginning of the current
+   * stagewise iteration.
+   */
+  arma::vec beta_start;
+
+  /*
+   * Candidate beta for the current epsilon:
+   *
+   *   beta_trial = beta_start + delta_beta
+   */
+  arma::vec beta_trial;
+
+  /*
+   * Elastic-net step for the current epsilon.
+   */
   arma::vec delta_beta;
-  arma::vec delta_xbeta;
-  arma::vec trial_nu_linear;
-  arma::vec trial_mu_mean;
 
   /*
    * Numerical explanation produced by stagewise.
