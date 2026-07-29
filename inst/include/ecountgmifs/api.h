@@ -262,21 +262,32 @@ struct EcountgmifsState
 
   Rcpp::NumericVector criteria;
 
-  uint64_t iteration;
+  uint64_t iteration = 0;
+
+  /*
+   * This value is populated when a State snapshot is saved to Path.
+   * The live mutable State does not own the null/saturated baselines.
+   */
+  double pseudo_r2 = arma::datum::nan;
 };
 
 struct EcountgmifsPath
 {
-  double null_negloglik =
-    arma::datum::nan;
-
+  /*
+   * Fit-wide null-model result. Beta is omitted because the null model
+   * always has beta = 0 and storing a p-length zero vector is unnecessary.
+   */
+  double null_negloglik = arma::datum::nan;
   arma::vec null_theta;
   arma::vec null_family_parameters;
   arma::vec null_link_parameters;
 
-  double saturated_negloglik =
-    arma::datum::nan;
-
+  /*
+   * Fit-wide saturated-model result. Family parameters are kept generic:
+   * an empty vector for parameter-free families, one value for NB2, and
+   * any other size required by another family implementation.
+   */
+  double saturated_negloglik = arma::datum::nan;
   arma::vec saturated_family_parameters;
 
   std::vector<EcountgmifsState> states;
@@ -308,7 +319,6 @@ struct IEcountgmifsCriterion
       const EcountgmifsContext& context
   ) const = 0;
 };
-
 
 
 

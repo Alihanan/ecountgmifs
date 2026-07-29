@@ -10,7 +10,7 @@
 struct NloptOptimizerInternal
 {
   NloptOptimizerInternal(
-    arma::vec& parameters_,
+    const arma::vec& initial_parameters,
     const arma::vec& lower,
     const arma::vec& upper,
     nlopt_func objective,
@@ -20,23 +20,23 @@ struct NloptOptimizerInternal
     double ftol_rel,
     int maxeval
   ) :
-  parameters(parameters_)
+  parameters_(initial_parameters)
   {
     if (
-        lower.n_elem != parameters.n_elem ||
-          upper.n_elem != parameters.n_elem
+        lower.n_elem != parameters_.n_elem ||
+          upper.n_elem != parameters_.n_elem
     ) {
       Rcpp::stop(
         "NLopt parameters and bounds have incompatible sizes"
       );
     }
 
-    if (parameters.n_elem == 0) {
+    if (parameters_.n_elem == 0) {
       return;
     }
 
     if (
-        parameters.n_elem >
+        parameters_.n_elem >
       std::numeric_limits<unsigned>::max()
     ) {
       Rcpp::stop("NLopt parameter count is too large");
@@ -44,7 +44,7 @@ struct NloptOptimizerInternal
 
     opt = nlopt_create(
       static_cast<nlopt_algorithm>(algorithm),
-      static_cast<unsigned>(parameters.n_elem)
+      static_cast<unsigned>(parameters_.n_elem)
     );
 
     if (opt == nullptr) {
@@ -143,7 +143,7 @@ struct NloptOptimizerInternal
     const nlopt_result result =
       nlopt_optimize(
         opt,
-        parameters.memptr(),
+        parameters_.memptr(),
         &objective_value
       );
 
@@ -156,8 +156,28 @@ struct NloptOptimizerInternal
   }
 
 
+  void set_parameters(
+      const arma::vec& parameters
+  )
+  {
+    if (parameters.n_elem != parameters_.n_elem) {
+      Rcpp::stop(
+        "incorrect NLopt parameter count"
+      );
+    }
+
+    parameters_ = parameters;
+  }
+
+
+  const arma::vec& parameters() const noexcept
+  {
+    return parameters_;
+  }
+
+
 private:
-  arma::vec& parameters;
+  arma::vec parameters_;
   nlopt_opt opt = nullptr;
 
 

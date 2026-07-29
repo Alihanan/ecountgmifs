@@ -456,14 +456,9 @@ public:
     },
 
     arma::datum::nan, // negloglik
-    arma::datum::nan, // saturated_dispersion
-    arma::datum::nan, // saturated_negloglik
-    arma::datum::nan, // null_negloglik
-
     Rcpp::NumericVector(), // criteria
-
-    0,   // iteration
-    1.0  // pseudo_r2
+    0, // iteration
+    arma::datum::nan // pseudo_r2; snapshots only
   }
   {
     check_initial_bounds(
@@ -506,17 +501,22 @@ public:
     return api;
   }
 
-  arma::vec& theta_for_optimizer() noexcept
+  const arma::vec& beta() const noexcept
+  {
+    return api.param.param.beta;
+  }
+
+  const arma::vec& theta() const noexcept
   {
     return api.param.param.theta;
   }
 
-  arma::vec& family_parameters_for_optimizer() noexcept
+  const arma::vec& family_parameters() const noexcept
   {
     return api.param.param.family_parameters;
   }
 
-  arma::vec& link_parameters_for_optimizer() noexcept
+  const arma::vec& link_parameters() const noexcept
   {
     return api.param.param.link_parameters;
   }
@@ -531,39 +531,9 @@ public:
     return api.param.mu;
   }
 
-  const arma::vec& family_parameters() const noexcept
-  {
-    return api.param.param.family_parameters;
-  }
-
-  const arma::vec& saturated_family_parameters() const noexcept
-  {
-    return saturated_family_parameters_;
-  }
-
-  arma::vec& saturated_family_parameters_for_optimizer() noexcept
-  {
-    return saturated_family_parameters_;
-  }
-
-  const arma::vec& link_parameters() const noexcept
-  {
-    return api.param.param.link_parameters;
-  }
-
   double negloglik() const noexcept
   {
     return api.negloglik;
-  }
-
-  double saturated_negloglik() const noexcept
-  {
-    return api.saturated_negloglik;
-  }
-
-  const arma::vec& beta() const noexcept
-  {
-    return api.param.param.beta;
   }
 
   uint64_t iteration() const noexcept
@@ -571,16 +541,35 @@ public:
     return api.iteration;
   }
 
-  double pseudo_r2() const noexcept
-  {
-    return api.pseudo_r2;
-  }
-
   void begin_stagewise_iteration(
       uint64_t iteration
   ) noexcept
   {
     api.iteration = iteration;
+  }
+
+  void initialize_for_fit(
+      const Rcpp::CharacterVector& criterion_names
+  )
+  {
+    check_vector_finite(
+      api.param.mu,
+      "initial mu"
+    );
+
+    update_negloglik();
+
+    api.param.active_set.zeros();
+    api.iteration = 0;
+    api.pseudo_r2 = arma::datum::nan;
+
+    api.criteria = Rcpp::NumericVector(
+      criterion_names.size(),
+      NA_REAL
+    );
+
+    api.criteria.attr("names") =
+      Rcpp::clone(criterion_names);
   }
 
   void evaluate_beta_step(
@@ -591,7 +580,10 @@ public:
       double& trial_negloglik
   ) const
   {
-    if (delta_beta.n_elem != api.param.param.beta.n_elem) {
+    if (
+        delta_beta.n_elem !=
+          api.param.param.beta.n_elem
+    ) {
       Rcpp::stop(
         "incorrect beta-step parameter count"
       );
@@ -646,48 +638,112 @@ public:
     refresh_after_beta();
   }
 
-  void initialize_for_fit(
-      const Rcpp::CharacterVector& criterion_names
+  void set_beta(
+      const arma::vec& beta
   )
   {
-    check_vector_finite(
-      api.param.mu,
-      "initial mu"
-    );
-
-    update_negloglik();
-
-    api.param.active_set.zeros();
-    api.saturated_dispersion = arma::datum::nan;
-    api.saturated_negloglik = arma::datum::nan;
-    api.null_negloglik = arma::datum::nan;
-    api.iteration = 0;
-    api.pseudo_r2 = arma::datum::nan;
-
-    api.criteria = Rcpp::NumericVector(
-      criterion_names.size(),
-      NA_REAL
-    );
-
-    api.criteria.attr("names") =
-      Rcpp::clone(criterion_names);
-  }
-
-  void store_null_negloglik() noexcept
-  {
-    api.null_negloglik = api.negloglik;
-    update_pseudo_r2();
-  }
-
-  void initialize_saturated_fit()
-  {
     copy_parameter_vector(
-      api.param.param.family_parameters,
-      saturated_family_parameters_,
-      "saturated family"
+      beta,
+      api.param.param.beta,
+      "beta"
     );
 
-    refresh_saturated_after_family_parameters();
+    refresh_after_beta();
+  }
+
+  void set_theta(
+      const arma::vec& theta
+  )
+  {
+    set_theta(
+      static_cast<unsigned>(theta.n_elem),
+      theta.memptr()
+    );
+  }
+
+  void set_family_parameters(
+      const arma::vec& family_parameters
+  )
+  {
+    set_family_parameters(
+      static_cast<unsigned>(family_parameters.n_elem),
+      family_parameters.memptr()
+    );
+  }
+
+  void set_link_parameters(
+      const arma::vec& link_parameters
+  )
+  {
+    set_link_parameters(
+      static_cast<unsigned>(link_parameters.n_elem),
+      link_parameters.memptr()
+    );
+  }
+
+  void set_theta(
+      unsigned n,
+      const double* values
+  )
+  {
+    copy_parameter_data(
+      n,
+      values,
+      api.param.param.theta,
+      "theta"
+    );
+
+    refresh_after_theta();
+  }
+
+  void set_family_parameters(
+      unsigned n,
+      const double* values
+  )
+  {
+    copy_parameter_data(
+      n,
+      values,
+      api.param.param.family_parameters,
+      "family"
+    );
+
+    refresh_after_family_parameters();
+  }
+
+  void set_link_parameters(
+      unsigned n,
+      const double* values
+  )
+  {
+    copy_parameter_data(
+      n,
+      values,
+      api.param.param.link_parameters,
+      "link"
+    );
+
+    refresh_after_link_parameters();
+  }
+
+  void refresh_after_beta()
+  {
+    update_xbeta();
+  }
+
+  void refresh_after_theta()
+  {
+    update_wtheta();
+  }
+
+  void refresh_after_link_parameters()
+  {
+    update_mu();
+  }
+
+  void refresh_after_family_parameters()
+  {
+    update_negloglik();
   }
 
   Rcpp::List to_list() const
@@ -768,154 +824,21 @@ public:
         Rcpp::Named("negloglik") =
           state.negloglik,
 
-          Rcpp::Named("saturated_dispersion") =
-            state.saturated_dispersion,
+          Rcpp::Named("criteria") =
+            Rcpp::clone(state.criteria),
 
-            Rcpp::Named("saturated_negloglik") =
-              state.saturated_negloglik,
+            Rcpp::Named("iteration") =
+              ecountgmifs::output::to_r_integer(
+                state.iteration,
+                "iteration"
+              ),
 
-              Rcpp::Named("null_negloglik") =
-                state.null_negloglik,
-
-                Rcpp::Named("criteria") =
-                  Rcpp::clone(state.criteria),
-
-                  Rcpp::Named("iteration") =
-                    ecountgmifs::output::to_r_integer(
-                      state.iteration,
-                      "iteration"
-                    ),
-
-                    Rcpp::Named("pseudo_r2") =
-                      state.pseudo_r2
+              Rcpp::Named("pseudo_r2") =
+                state.pseudo_r2
     );
-  }
-
-  void set_beta(
-      const arma::vec& beta
-  )
-  {
-    copy_parameter_vector(
-      beta,
-      api.param.param.beta,
-      "beta"
-    );
-
-    refresh_after_beta();
-  }
-
-  void set_theta(
-      const arma::vec& theta
-  )
-  {
-    set_theta(
-      static_cast<unsigned>(theta.n_elem),
-      theta.memptr()
-    );
-  }
-
-  void set_family_parameters(
-      const arma::vec& family_parameters
-  )
-  {
-    set_family_parameters(
-      static_cast<unsigned>(family_parameters.n_elem),
-      family_parameters.memptr()
-    );
-  }
-
-  void set_link_parameters(
-      const arma::vec& link_parameters
-  )
-  {
-    set_link_parameters(
-      static_cast<unsigned>(link_parameters.n_elem),
-      link_parameters.memptr()
-    );
-  }
-
-  void set_theta(
-      unsigned n,
-      const double* values
-  )
-  {
-    copy_parameter_data(
-      n,
-      values,
-      api.param.param.theta,
-      "theta"
-    );
-
-    refresh_after_theta();
-  }
-
-  void set_family_parameters(
-      unsigned n,
-      const double* values
-  )
-  {
-    copy_parameter_data(
-      n,
-      values,
-      api.param.param.family_parameters,
-      "family"
-    );
-
-    refresh_after_family_parameters();
-  }
-
-  void set_saturated_family_parameters(
-      unsigned n,
-      const double* values
-  )
-  {
-    copy_parameter_data(
-      n,
-      values,
-      saturated_family_parameters_,
-      "saturated family"
-    );
-
-    refresh_saturated_after_family_parameters();
-  }
-
-  void set_link_parameters(
-      unsigned n,
-      const double* values
-  )
-  {
-    copy_parameter_data(
-      n,
-      values,
-      api.param.param.link_parameters,
-      "link"
-    );
-
-    refresh_after_link_parameters();
-  }
-
-  void refresh_after_beta()
-  {
-    update_xbeta();
-  }
-
-  void refresh_after_theta()
-  {
-    update_wtheta();
-  }
-
-  void refresh_after_link_parameters()
-  {
-    update_mu();
-  }
-
-  void refresh_after_family_parameters()
-  {
-    update_negloglik();
   }
 
 private:
-
   static void copy_parameter_vector(
       const arma::vec& source,
       arma::vec& destination,
@@ -963,53 +886,18 @@ private:
 
   void refresh_after_constructor()
   {
-    api.param.xbeta =
-      input.X *
-      api.param.param.beta;
-
-    api.param.wtheta =
-      input.w *
-      api.param.param.theta;
-
-    update_eta();
-    update_mu();
-    update_negloglik();
+    /*
+     * Both roots changed during construction. Each root starts its own
+     * downstream cascade; duplicated constructor work is acceptable.
+     */
+    update_xbeta();
+    update_wtheta();
   }
 
-  void update_eta()
-  {
-    api.param.eta =
-      input.offset +
-      api.param.xbeta +
-      api.param.wtheta;
-  }
-
-  void update_mu()
-  {
-    input.link_func->inverse(
-        api.param.eta,
-        api.param.param.link_parameters,
-        api.param.mu
-    );
-
-    check_vector_finite(
-      api.param.mu,
-      "mu"
-    );
-  }
-
-  void update_active_set()
-  {
-    api.param.active_set =
-      arma::conv_to<arma::uvec>::from(
-        api.param.param.beta != 0.0
-      );
-  }
   void update_xbeta()
   {
     api.param.xbeta =
-      input.X *
-      api.param.param.beta;
+      input.X * api.param.param.beta;
 
     update_active_set();
     update_eta();
@@ -1018,8 +906,7 @@ private:
   void update_wtheta()
   {
     api.param.wtheta =
-      input.w *
-      api.param.param.theta;
+      input.w * api.param.param.theta;
 
     update_eta();
   }
@@ -1064,7 +951,16 @@ private:
       "negloglik"
     );
   }
+
+  void update_active_set()
+  {
+    api.param.active_set =
+      arma::conv_to<arma::uvec>::from(
+        api.param.param.beta != 0.0
+      );
+  }
 };
+
 
 struct EcountgmifsGradientsInternal
 {
@@ -1271,30 +1167,199 @@ private:
 
 struct EcountgmifsPathInternal
 {
-  const EcountgmifsState& current_state;
+private:
+  const EcountgmifsStateInternal& current_state;
   const EcountgmifsControl& control;
-  const EcountgmifsStagewise& stagewise;
-
   EcountgmifsPath api;
 
+public:
   EcountgmifsPathInternal(
-    const EcountgmifsState& state_,
-    const EcountgmifsControl& control_,
-    const EcountgmifsStagewise& stagewise_
+    const EcountgmifsStateInternal& state_,
+    const EcountgmifsControl& control_
   ) :
-    current_state(state_),
-    control(control_),
-    stagewise(stagewise_),
-    api {}
-    {
-      api.last_saved_active_set.zeros(
-        state_.param.active_set.n_elem
-      );
-    }
+  current_state(state_),
+  control(control_),
+  api {}
+  {
+    api.last_saved_active_set.zeros(
+      current_state.view().param.active_set.n_elem
+    );
+  }
+
+  EcountgmifsPathInternal(
+    const EcountgmifsPathInternal&
+  ) = delete;
+
+  EcountgmifsPathInternal(
+    EcountgmifsPathInternal&&
+  ) = delete;
+
+  EcountgmifsPathInternal& operator=(
+    const EcountgmifsPathInternal&
+  ) = delete;
+
+  EcountgmifsPathInternal& operator=(
+    EcountgmifsPathInternal&&
+  ) = delete;
 
   const EcountgmifsPath& view() const noexcept
   {
     return api;
+  }
+
+  void store_null_model()
+  {
+    api.null_negloglik =
+      current_state.negloglik();
+
+    api.null_theta =
+      current_state.theta();
+
+    api.null_family_parameters =
+      current_state.family_parameters();
+
+    api.null_link_parameters =
+      current_state.link_parameters();
+  }
+
+  void store_saturated_model(
+      const arma::vec& family_parameters,
+      double negloglik
+  )
+  {
+    check_finite_scalar(
+      negloglik,
+      "saturated negloglik"
+    );
+
+    api.saturated_family_parameters =
+      family_parameters;
+
+    api.saturated_negloglik =
+      negloglik;
+  }
+
+  double pseudo_r2(
+      double negloglik
+  ) const noexcept
+  {
+    const double denominator =
+      api.null_negloglik -
+      api.saturated_negloglik;
+
+    if (
+        !std::isfinite(negloglik) ||
+          !std::isfinite(denominator) ||
+          denominator <= 0.0
+    ) {
+      return arma::datum::nan;
+    }
+
+    return
+    (
+        api.null_negloglik -
+          negloglik
+    ) /
+      denominator;
+  }
+
+  void save_current_state(
+      bool force = false
+  )
+  {
+    if (
+        control.state_track_strategy ==
+          EnumStateTrackStrategy::NO_STATE_TRACKING
+    ) {
+      return;
+    }
+
+    const EcountgmifsState& state =
+      current_state.view();
+
+    api.active_set_changed =
+      arma::any(
+        state.param.active_set !=
+          api.last_saved_active_set
+      );
+
+    bool should_save = force;
+
+    if (!should_save) {
+      switch (control.state_track_strategy) {
+      case EnumStateTrackStrategy::ACTIVE_SET_CHANGE:
+        should_save =
+          api.active_set_changed;
+        break;
+
+      case EnumStateTrackStrategy::ALL_ITERATION:
+        should_save = true;
+        break;
+
+      case EnumStateTrackStrategy::EVERY_K_ITERATION:
+        should_save =
+          state.iteration %
+          control.state_track_freq == 0;
+        break;
+
+      case EnumStateTrackStrategy::NO_STATE_TRACKING:
+        should_save = false;
+        break;
+      }
+    }
+
+    if (!should_save) {
+      return;
+    }
+
+    EcountgmifsState snapshot =
+      state;
+
+    snapshot.pseudo_r2 =
+      pseudo_r2(snapshot.negloglik);
+
+    if (
+        !api.states.empty() &&
+          api.states.back().iteration ==
+          snapshot.iteration
+    ) {
+      api.states.back() =
+        std::move(snapshot);
+    } else {
+      api.states.push_back(
+        std::move(snapshot)
+      );
+    }
+
+    api.last_saved_active_set =
+      state.param.active_set;
+  }
+
+  void finalize_message(
+      EnumStagewiseTerminationReason reason,
+      const std::string& detail
+  )
+  {
+    api.message =
+      "[" +
+      std::string(
+        stagewise_termination_reason_label(reason)
+      ) +
+        "] " +
+        detail;
+  }
+
+  Rcpp::List current_state_to_list() const
+  {
+    EcountgmifsState snapshot =
+      current_state.view();
+
+    snapshot.pseudo_r2 =
+      pseudo_r2(snapshot.negloglik);
+
+    return EcountgmifsStateInternal::to_list(
+      snapshot
+    );
   }
 
   Rcpp::List to_list() const
@@ -1302,6 +1367,7 @@ struct EcountgmifsPathInternal
     Rcpp::List states(
         static_cast<R_xlen_t>(api.states.size())
     );
+
     Rcpp::CharacterVector state_names(
         static_cast<R_xlen_t>(api.states.size())
     );
@@ -1320,38 +1386,53 @@ struct EcountgmifsPathInternal
         std::to_string(state.iteration);
     }
 
-    states.attr("names") = state_names;
+    states.attr("names") =
+      state_names;
 
     return Rcpp::List::create(
-      Rcpp::Named("states") =
-        states,
+      Rcpp::Named("null_negloglik") =
+        api.null_negloglik,
 
-        Rcpp::Named("last_saved_active_set") =
-          ecountgmifs::output::to_r_logical_vector(
-            api.last_saved_active_set
+        Rcpp::Named("null_theta") =
+          ecountgmifs::output::to_r_vector(
+            api.null_theta
           ),
 
-          Rcpp::Named("message") =
-            api.message
+          Rcpp::Named("null_family_parameters") =
+            ecountgmifs::output::to_r_vector(
+              api.null_family_parameters
+            ),
+
+            Rcpp::Named("null_link_parameters") =
+              ecountgmifs::output::to_r_vector(
+                api.null_link_parameters
+              ),
+
+              Rcpp::Named("saturated_negloglik") =
+                api.saturated_negloglik,
+
+                Rcpp::Named("saturated_family_parameters") =
+                  ecountgmifs::output::to_r_vector(
+                    api.saturated_family_parameters
+                  ),
+
+                  Rcpp::Named("states") =
+                    states,
+
+                    Rcpp::Named("last_saved_active_set") =
+                      ecountgmifs::output::to_r_logical_vector(
+                        api.last_saved_active_set
+                      ),
+
+                      Rcpp::Named("active_set_changed") =
+                        api.active_set_changed,
+
+                        Rcpp::Named("message") =
+                          api.message
     );
   }
-
-  EcountgmifsPathInternal(
-    const EcountgmifsPathInternal&
-  ) = delete;
-
-  EcountgmifsPathInternal(
-    EcountgmifsPathInternal&&
-  ) = delete;
-
-  EcountgmifsPathInternal& operator=(
-    const EcountgmifsPathInternal&
-  ) = delete;
-
-  EcountgmifsPathInternal& operator=(
-    EcountgmifsPathInternal&&
-  ) = delete;
 };
+
 
 struct EcountgmifsStagewiseInternal
 {
@@ -1361,8 +1442,17 @@ private:
 
   EcountgmifsStateInternal& state;
   EcountgmifsGradientsInternal& gradient;
+  EcountgmifsPathInternal& path;
 
   EcountgmifsStagewise api;
+
+  /*
+   * Temporary saturated-fit workspace. It belongs to the fitting
+   * coordinator, not to the current State or the completed Path result.
+   * Its stable member lifetime also makes it safe for NLopt callbacks.
+   */
+  arma::vec saturated_family_parameters_;
+  double saturated_negloglik_ = arma::datum::nan;
 
   NloptOptimizerInternal nonpen_optimizer;
   NloptOptimizerInternal family_optimizer;
@@ -1378,16 +1468,21 @@ public:
     const EcountgmifsInput& input_,
     const EcountgmifsControl& control_,
     EcountgmifsStateInternal& state_,
-    EcountgmifsGradientsInternal& gradient_
+    EcountgmifsGradientsInternal& gradient_,
+    EcountgmifsPathInternal& path_
   ) :
   input(input_),
   control(control_),
   state(state_),
   gradient(gradient_),
+  path(path_),
   api {},
+  saturated_family_parameters_(
+    input_.family->initial_parameters()
+  ),
 
   nonpen_optimizer(
-    state_.theta_for_optimizer(),
+    state_.theta(),
     control_.theta_lower_bounds,
     control_.theta_upper_bounds,
     &EcountgmifsStagewiseInternal::nonpen_objective,
@@ -1399,7 +1494,7 @@ public:
   ),
 
   family_optimizer(
-    state_.family_parameters_for_optimizer(),
+    state_.family_parameters(),
     input_.family->parameter_lower_bounds(),
     input_.family->parameter_upper_bounds(),
     &EcountgmifsStagewiseInternal::family_objective,
@@ -1411,7 +1506,7 @@ public:
   ),
 
   link_optimizer(
-    state_.link_parameters_for_optimizer(),
+    state_.link_parameters(),
     input_.link_func->parameter_lower_bounds(),
     input_.link_func->parameter_upper_bounds(),
     &EcountgmifsStagewiseInternal::link_objective,
@@ -1477,6 +1572,14 @@ public:
     initialize();
     fit_null_model();
     fit_saturated_model();
+
+    /*
+     * The current State is still the fitted null model because saturated
+     * fitting uses separate Stagewise workspace. Save it only after both
+     * baselines are available, so its pseudo-R2 can be populated correctly.
+     */
+    path.save_current_state(true);
+
     fit_stagewise_model();
   }
 
@@ -1531,174 +1634,349 @@ private:
       control.verbose,
       "null: start"
       << ", max_outer=" << control.iteration_max
-      << ", tolerance=" << control.tol
+      << ", family_tolerance=" << control.tol
       << ", initial_negloglik=" << state.negloglik()
     );
 
-    for (
-        uint64_t outer_iteration = 0;
-        outer_iteration < control.iteration_max;
-        ++outer_iteration
-    ) {
-      Rcpp::checkUserInterrupt();
+    /*
+     * Allocate these buffers once. They are reused for every outer
+     * theta/link/family alternation.
+     */
+    arma::vec theta_previous(
+        state.theta().n_elem
+    );
 
-      const double negloglik_previous =
-        state.negloglik();
+    arma::vec link_parameters_previous(
+        state.link_parameters().n_elem
+    );
 
-      ECOUNTGMIFS_VERBOSE(
-        control.verbose,
-        "null: iter=" << outer_iteration + 1
-                      << " begin"
-                      << ", negloglik="
-                      << negloglik_previous
-      );
+    arma::vec family_parameters_previous(
+        state.family_parameters().n_elem
+    );
 
-      nonpen_evaluation_count = 0;
+    const auto vectors_exactly_equal =
+      [](
+          const arma::vec& current,
+          const arma::vec& previous
+      ) noexcept
+      {
+        if (
+            current.n_elem !=
+              previous.n_elem
+        ) {
+          return false;
+        }
 
-      ECOUNTGMIFS_VERBOSE(
-        control.verbose,
-        "null: iter=" << outer_iteration + 1
-                      << " optimize_theta start"
-      );
+        if (current.n_elem == 0) {
+          return true;
+        }
 
-      nonpen_optimizer.optimize();
-      state.refresh_after_theta();
-
-      ECOUNTGMIFS_VERBOSE(
-        control.verbose,
-        "null: iter=" << outer_iteration + 1
-                      << " optimize_theta done"
-                      << ", evaluations="
-                      << nonpen_evaluation_count
-                      << ", negloglik="
-                      << state.negloglik()
-      );
-
-      link_evaluation_count = 0;
-
-      ECOUNTGMIFS_VERBOSE(
-        control.verbose,
-        "null: iter=" << outer_iteration + 1
-                      << " optimize_link start"
-      );
-
-      link_optimizer.optimize();
-      state.refresh_after_link_parameters();
-
-      ECOUNTGMIFS_VERBOSE(
-        control.verbose,
-        "null: iter=" << outer_iteration + 1
-                      << " optimize_link done"
-                      << ", evaluations="
-                      << link_evaluation_count
-                      << ", negloglik="
-                      << state.negloglik()
-      );
-
-      family_evaluation_count = 0;
-
-      ECOUNTGMIFS_VERBOSE(
-        control.verbose,
-        "null: iter=" << outer_iteration + 1
-                      << " optimize_family start"
-      );
-
-      family_optimizer.optimize();
-      state.refresh_after_family_parameters();
-
-      const double negloglik_current =
-        state.negloglik();
-
-      ECOUNTGMIFS_VERBOSE(
-        control.verbose,
-        "null: iter=" << outer_iteration + 1
-                      << " optimize_family done"
-                      << ", evaluations="
-                      << family_evaluation_count
-                      << ", negloglik="
-                      << negloglik_current
-      );
-
-      check_finite_scalar(
-        negloglik_current,
-        "null-model negloglik"
-      );
-
-      const double objective_scale =
-        std::max(
-          1.0,
-          std::max(
-            std::abs(negloglik_previous),
-            std::abs(negloglik_current)
-          )
+        return arma::all(
+          current == previous
         );
+      };
 
-      const double objective_absolute_change =
-        std::abs(
-          negloglik_current -
-            negloglik_previous
-        );
+      const auto vectors_within_absolute_tolerance =
+        [&](
+            const arma::vec& current,
+            const arma::vec& previous
+        ) noexcept
+        {
+          if (
+              current.n_elem !=
+                previous.n_elem
+          ) {
+            return false;
+          }
 
-      const double objective_relative_change =
-        objective_absolute_change /
-          objective_scale;
+          if (current.n_elem == 0) {
+            return true;
+          }
 
-      ECOUNTGMIFS_VERBOSE(
-        control.verbose,
-        "null: iter=" << outer_iteration + 1
-                      << " summary"
-                      << ", absolute_change="
-                      << objective_absolute_change
-                      << ", relative_change="
-                      << objective_relative_change
-                      << ", tolerance="
-                      << control.tol
-      );
+          return arma::all(
+            arma::abs(
+              current -
+                previous
+            ) < control.tol
+          );
+        };
 
-      if (
-          objective_relative_change <=
-            control.tol
-      ) {
-        state.store_null_negloglik();
+        for (
+            uint64_t outer_iteration = 0;
+            outer_iteration < control.iteration_max;
+            ++outer_iteration
+        ) {
+          Rcpp::checkUserInterrupt();
+
+          /*
+           * Save the complete null-model state before the alternating update.
+           */
+          const double negloglik_previous =
+            state.negloglik();
+
+          theta_previous =
+            state.theta();
+
+          link_parameters_previous =
+            state.link_parameters();
+
+          family_parameters_previous =
+            state.family_parameters();
+
+          ECOUNTGMIFS_VERBOSE(
+            control.verbose,
+            "null: iter=" << outer_iteration + 1
+                          << " begin"
+                          << ", negloglik="
+                          << negloglik_previous
+          );
+
+          /*
+           * Optimize nonpenalized regression parameters.
+           */
+          nonpen_evaluation_count = 0;
+
+          ECOUNTGMIFS_VERBOSE(
+            control.verbose,
+            "null: iter=" << outer_iteration + 1
+                          << " optimize_theta start"
+          );
+
+          nonpen_optimizer.set_parameters(
+            state.theta()
+          );
+
+          nonpen_optimizer.optimize();
+
+          /*
+           * Commit only NLopt's returned optimum. Objective callbacks may
+           * temporarily evaluate other candidate values in State.
+           */
+          state.set_theta(
+            nonpen_optimizer.parameters()
+          );
+
+          ECOUNTGMIFS_VERBOSE(
+            control.verbose,
+            "null: iter=" << outer_iteration + 1
+                          << " optimize_theta done"
+                          << ", evaluations="
+                          << nonpen_evaluation_count
+                          << ", negloglik="
+                          << state.negloglik()
+          );
+
+          /*
+           * Optimize link parameters, when the link has any.
+           */
+          link_evaluation_count = 0;
+
+          ECOUNTGMIFS_VERBOSE(
+            control.verbose,
+            "null: iter=" << outer_iteration + 1
+                          << " optimize_link start"
+          );
+
+          link_optimizer.set_parameters(
+            state.link_parameters()
+          );
+
+          link_optimizer.optimize();
+
+          state.set_link_parameters(
+            link_optimizer.parameters()
+          );
+
+          ECOUNTGMIFS_VERBOSE(
+            control.verbose,
+            "null: iter=" << outer_iteration + 1
+                          << " optimize_link done"
+                          << ", evaluations="
+                          << link_evaluation_count
+                          << ", negloglik="
+                          << state.negloglik()
+          );
+
+          /*
+           * Optimize family parameters.
+           */
+          family_evaluation_count = 0;
+
+          ECOUNTGMIFS_VERBOSE(
+            control.verbose,
+            "null: iter=" << outer_iteration + 1
+                          << " optimize_family start"
+          );
+
+          family_optimizer.set_parameters(
+            state.family_parameters()
+          );
+
+          family_optimizer.optimize();
+
+          state.set_family_parameters(
+            family_optimizer.parameters()
+          );
+
+          const double negloglik_current =
+            state.negloglik();
+
+          ECOUNTGMIFS_VERBOSE(
+            control.verbose,
+            "null: iter=" << outer_iteration + 1
+                          << " optimize_family done"
+                          << ", evaluations="
+                          << family_evaluation_count
+                          << ", negloglik="
+                          << negloglik_current
+          );
+
+          check_finite_scalar(
+            negloglik_current,
+            "null-model negloglik"
+          );
+
+          /*
+           * Match the original glmSS stopping rule:
+           *
+           *   - objective unchanged exactly;
+           *   - theta unchanged exactly;
+           *   - link parameters unchanged exactly;
+           *   - family parameters changed by less than control.tol.
+           *
+           * glmSS used exact comparison for the objective and intercept, and an
+           * absolute 1e-18 comparison for dispersion.
+           */
+          const bool negloglik_same =
+            negloglik_current ==
+            negloglik_previous;
+
+          const bool theta_same =
+            vectors_exactly_equal(
+              state.theta(),
+              theta_previous
+            );
+
+          const bool link_parameters_same =
+            vectors_exactly_equal(
+              state.link_parameters(),
+              link_parameters_previous
+            );
+
+          const bool family_parameters_same =
+            vectors_within_absolute_tolerance(
+              state.family_parameters(),
+              family_parameters_previous
+            );
+
+          const double objective_absolute_change =
+            std::abs(
+              negloglik_current -
+                negloglik_previous
+            );
+
+          double theta_max_absolute_change = 0.0;
+
+          if (state.theta().n_elem > 0) {
+            theta_max_absolute_change =
+              arma::abs(
+                state.theta() -
+                  theta_previous
+              ).max();
+          }
+
+          double link_max_absolute_change = 0.0;
+
+          if (state.link_parameters().n_elem > 0) {
+            link_max_absolute_change =
+              arma::abs(
+                state.link_parameters() -
+                  link_parameters_previous
+              ).max();
+          }
+
+          double family_max_absolute_change = 0.0;
+
+          if (state.family_parameters().n_elem > 0) {
+            family_max_absolute_change =
+              arma::abs(
+                state.family_parameters() -
+                  family_parameters_previous
+              ).max();
+          }
+
+          ECOUNTGMIFS_VERBOSE(
+            control.verbose,
+            "null: iter=" << outer_iteration + 1
+                          << " summary"
+                          << ", objective_absolute_change="
+                          << objective_absolute_change
+                          << ", negloglik_same="
+                          << negloglik_same
+                          << ", theta_max_absolute_change="
+                          << theta_max_absolute_change
+                          << ", theta_same="
+                          << theta_same
+                          << ", link_max_absolute_change="
+                          << link_max_absolute_change
+                          << ", link_same="
+                          << link_parameters_same
+                          << ", family_max_absolute_change="
+                          << family_max_absolute_change
+                          << ", family_same="
+                          << family_parameters_same
+                          << ", family_tolerance="
+                          << control.tol
+          );
+
+          if (
+              negloglik_same &&
+                theta_same &&
+                link_parameters_same &&
+                family_parameters_same
+          ) {
+            path.store_null_model();
+
+            api.phase =
+              EnumStagewisePhase::STAGEWISE_SATURATED;
+
+            api.termination_detail =
+              "Null model fitted; ready for saturated fitting.";
+
+            ECOUNTGMIFS_VERBOSE(
+              control.verbose,
+              "null: converged"
+              << ", outer_iterations="
+              << outer_iteration + 1
+              << ", negloglik="
+              << state.negloglik()
+            );
+
+            return;
+          }
+        }
+
+        /*
+         * Preserve the current behavior when the outer limit is reached:
+         * retain the last valid fitted state and continue to saturated fitting.
+         */
+        path.store_null_model();
 
         api.phase =
           EnumStagewisePhase::STAGEWISE_SATURATED;
 
         api.termination_detail =
-          "Null model fitted; ready for saturated fitting.";
+          "Null-model outer iteration limit reached; "
+          "ready for saturated fitting.";
 
         ECOUNTGMIFS_VERBOSE(
           control.verbose,
-          "null: converged"
-          << ", outer_iterations="
-          << outer_iteration + 1
+          "null: outer iteration limit reached"
+          << ", max_outer="
+          << control.iteration_max
           << ", negloglik="
           << state.negloglik()
-          << ", relative_change="
-          << objective_relative_change
         );
-
-        return;
-      }
-    }
-
-    state.store_null_negloglik();
-
-    api.phase =
-      EnumStagewisePhase::STAGEWISE_SATURATED;
-
-    api.termination_detail =
-      "Null-model outer iteration limit reached; "
-      "ready for saturated fitting.";
-
-    ECOUNTGMIFS_VERBOSE(
-      control.verbose,
-      "null: outer iteration limit reached"
-      << ", max_outer="
-      << control.iteration_max
-      << ", negloglik="
-      << state.negloglik()
-    );
   }
 
   void fit_saturated_model()
@@ -1708,7 +1986,14 @@ private:
 
     Rcpp::checkUserInterrupt();
 
-    state.initialize_saturated_fit();
+    /*
+     * Use the fitted null family parameters as the saturated optimizer's
+     * starting point, but keep the workspace separate from current State.
+     */
+    saturated_family_parameters_ =
+      state.family_parameters();
+
+    refresh_saturated_negloglik();
 
     saturated_family_evaluation_count = 0;
 
@@ -1716,13 +2001,13 @@ private:
       control.verbose,
       "saturated: start"
       << ", family_parameters="
-      << state.saturated_family_parameters().t()
+      << saturated_family_parameters_.t()
       << ", initial_negloglik="
-      << state.saturated_negloglik()
+      << saturated_negloglik_
     );
 
     NloptOptimizerInternal saturated_family_optimizer(
-        state.saturated_family_parameters_for_optimizer(),
+        saturated_family_parameters_,
         input.family->parameter_lower_bounds(),
         input.family->parameter_upper_bounds(),
         &EcountgmifsStagewiseInternal::saturated_family_objective,
@@ -1736,10 +2021,20 @@ private:
     saturated_family_optimizer.optimize();
 
     /*
-     * NLopt may write the selected final point after the last
-     * callback, so synchronize the saturated objective once more.
+     * The optimizer owns its parameter vector. Commit its returned optimum
+     * instead of retaining the last callback candidate.
      */
-    state.refresh_saturated_after_family_parameters();
+    set_saturated_family_parameters(
+      static_cast<unsigned>(
+        saturated_family_optimizer.parameters().n_elem
+      ),
+      saturated_family_optimizer.parameters().memptr()
+    );
+
+    path.store_saturated_model(
+      saturated_family_parameters_,
+      saturated_negloglik_
+    );
 
     ECOUNTGMIFS_VERBOSE(
       control.verbose,
@@ -1747,9 +2042,9 @@ private:
       << ", evaluations="
       << saturated_family_evaluation_count
       << ", family_parameters="
-      << state.saturated_family_parameters().t()
+      << saturated_family_parameters_.t()
       << ", negloglik="
-      << state.saturated_negloglik()
+      << saturated_negloglik_
     );
 
     api.phase =
@@ -1785,10 +2080,6 @@ private:
         ++iteration
     ) {
       Rcpp::checkUserInterrupt();
-
-      state.begin_stagewise_iteration(
-        iteration
-      );
 
       const double negloglik_previous =
         state.negloglik();
@@ -1890,17 +2181,47 @@ private:
         return;
       }
 
+      nonpen_optimizer.set_parameters(
+        state.theta()
+      );
       nonpen_optimizer.optimize();
-      state.refresh_after_theta();
+      state.set_theta(
+        nonpen_optimizer.parameters()
+      );
 
+      link_optimizer.set_parameters(
+        state.link_parameters()
+      );
       link_optimizer.optimize();
-      state.refresh_after_link_parameters();
+      state.set_link_parameters(
+        link_optimizer.parameters()
+      );
 
+      family_optimizer.set_parameters(
+        state.family_parameters()
+      );
       family_optimizer.optimize();
-      state.refresh_after_family_parameters();
+      state.set_family_parameters(
+        family_optimizer.parameters()
+      );
+
+      /*
+       * State iteration means completed stagewise updates, not attempted
+       * iterations. Set it only after the whole accepted/refitted update.
+       */
+      state.begin_stagewise_iteration(
+        iteration
+      );
 
       const double negloglik_current =
         state.negloglik();
+
+      const double pseudo_r2_current =
+        path.pseudo_r2(
+          negloglik_current
+        );
+
+      path.save_current_state();
 
       const double objective_scale =
         std::max(
@@ -1940,7 +2261,7 @@ private:
         << ", relative_change="
         << objective_relative_change
         << ", pseudo_r2="
-        << state.pseudo_r2()
+        << pseudo_r2_current
       );
 
       if (
@@ -1971,8 +2292,8 @@ private:
 
       if (
           control.loglik_reltol_cutoff > 0.0 &&
-            std::isfinite(state.pseudo_r2()) &&
-            state.pseudo_r2() >=
+            std::isfinite(pseudo_r2_current) &&
+            pseudo_r2_current >=
             1.0 - control.loglik_reltol_cutoff
       ) {
         finish_stagewise(
@@ -2006,6 +2327,17 @@ private:
     api.termination_detail =
       detail;
 
+    /*
+     * Path decides whether/how to store snapshots. A forced save still
+     * respects NO_STATE_TRACKING and replaces an existing same-iteration
+     * snapshot instead of duplicating it.
+     */
+    path.save_current_state(true);
+    path.finalize_message(
+      reason,
+      api.termination_detail
+    );
+
     ECOUNTGMIFS_VERBOSE(
       control.verbose,
       "stagewise: stop"
@@ -2016,9 +2348,46 @@ private:
       << ", negloglik="
       << state.negloglik()
       << ", pseudo_r2="
-      << state.pseudo_r2()
+      << path.pseudo_r2(state.negloglik())
       << ", epsilon="
       << api.epsilon
+    );
+  }
+
+  void set_saturated_family_parameters(
+      unsigned n,
+      const double* values
+  )
+  {
+    if (n != saturated_family_parameters_.n_elem) {
+      Rcpp::stop(
+        "incorrect saturated family parameter count"
+      );
+    }
+
+    if (values != saturated_family_parameters_.memptr()) {
+      std::copy_n(
+        values,
+        n,
+        saturated_family_parameters_.memptr()
+      );
+    }
+
+    refresh_saturated_negloglik();
+  }
+
+  void refresh_saturated_negloglik()
+  {
+    input.family->negloglik(
+        input.y,
+        input.y,
+        saturated_family_parameters_,
+        saturated_negloglik_
+    );
+
+    check_finite_scalar(
+      saturated_negloglik_,
+      "saturated negloglik"
     );
   }
 
@@ -2034,12 +2403,12 @@ private:
 
       ++stagewise.saturated_family_evaluation_count;
 
-      stagewise.state.set_saturated_family_parameters(
+      stagewise.set_saturated_family_parameters(
         n,
         values
       );
 
-      return stagewise.state.saturated_negloglik();
+      return stagewise.saturated_negloglik_;
   }
 
   static double nonpen_objective(
@@ -2172,8 +2541,8 @@ struct EcountgmifsContextInternal
   EcountgmifsControlInternal control;
   EcountgmifsStateInternal state;
   EcountgmifsGradientsInternal gradient;
-  EcountgmifsStagewiseInternal stagewise;
   EcountgmifsPathInternal path;
+  EcountgmifsStagewiseInternal stagewise;
   EcountgmifsRuntimeInternal runtime;
 
   EcountgmifsContext api;
@@ -2272,17 +2641,17 @@ struct EcountgmifsContextInternal
       state
     ),
 
+    path(
+      state,
+      control.api
+    ),
+
     stagewise(
       input.api,
       control.api,
       state,
-      gradient
-    ),
-
-    path(
-      state.view(),
-      control.api,
-      stagewise.view()
+      gradient,
+      path
     ),
 
     runtime(

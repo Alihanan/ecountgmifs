@@ -125,7 +125,7 @@ Rcpp::List ecountgmifs_cpp(
         ctx.control.to_list(),
 
         Rcpp::Named("state") =
-          ctx.state.to_list(),
+          ctx.path.current_state_to_list(),
 
           Rcpp::Named("path") =
             ctx.path.to_list(),
