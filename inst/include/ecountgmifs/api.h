@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <string>
 #include <vector>
+#include <limits>
 
 enum EnumStateTrackStrategy
 {
@@ -383,6 +384,16 @@ struct EcountgmifsState
   double pseudo_r2 = arma::datum::nan;
 };
 
+struct EcountgmifsBestCriterion
+{
+  std::string name;
+
+  double value =
+    std::numeric_limits<double>::infinity();
+
+  EcountgmifsState state;
+};
+
 struct EcountgmifsPath
 {
   /*
@@ -401,6 +412,9 @@ struct EcountgmifsPath
    */
   double saturated_negloglik = arma::datum::nan;
   arma::vec saturated_family_parameters;
+
+  std::vector<EcountgmifsBestCriterion>
+    best_criteria;
 
   std::vector<EcountgmifsState> states;
   arma::uvec last_saved_active_set;
@@ -433,5 +447,6 @@ struct IEcountgmifsCriterion
       const EcountgmifsState& state
   ) const = 0;
 };
+
 
 

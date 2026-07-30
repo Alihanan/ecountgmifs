@@ -104,23 +104,5 @@ Rcpp::List ecountgmifs_cpp(
 
   ctx.stagewise.fit();
 
-
-  return Rcpp::List::create(
-    Rcpp::Named("input") =
-      ctx.input.to_list(
-        ctx.control.api.include_data
-      ),
-
-      Rcpp::Named("control") =
-        ctx.control.to_list(),
-
-        Rcpp::Named("state") =
-          ctx.path.current_state_to_list(),
-
-          Rcpp::Named("path") =
-            ctx.path.to_list(),
-
-            Rcpp::Named("stagewise") =
-              ctx.stagewise.to_list()
-  );
+  return ctx.to_list();
 }

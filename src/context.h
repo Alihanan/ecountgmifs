@@ -290,6 +290,23 @@ public:
 
   Rcpp::List to_list(bool include_data = false) const
   {
+    Rcpp::CharacterVector criterion_names(
+        static_cast<R_xlen_t>(
+          api.criteria.size()
+        )
+    );
+
+    for (
+        std::size_t i = 0;
+        i < api.criteria.size();
+        ++i
+    ) {
+      criterion_names[
+        static_cast<R_xlen_t>(i)
+      ] =
+        api.criteria[i]->name();
+    }
+
     Rcpp::List out = Rcpp::List::create(
       Rcpp::Named("n") = api.X.n_rows,
       Rcpp::Named("p") = api.X.n_cols,
@@ -318,6 +335,8 @@ public:
           ),
           Rcpp::Named("family_link_supplied") =
             supplied_family_link_ != nullptr,
+          Rcpp::Named("criteria") =
+            criterion_names,
           Rcpp::Named("enet_alpha") = api.enet_alpha,
           Rcpp::Named("has_prior") = api.has_prior
     );
@@ -1334,19 +1353,35 @@ private:
 struct EcountgmifsPathInternal
 {
 private:
+  const EcountgmifsInput& input;
   const EcountgmifsStateInternal& current_state;
   const EcountgmifsControl& control;
   EcountgmifsPath api;
 
 public:
   EcountgmifsPathInternal(
+    const EcountgmifsInput& input_,
     const EcountgmifsStateInternal& state_,
     const EcountgmifsControl& control_
   ) :
+  input(input_),
   current_state(state_),
   control(control_),
   api {}
   {
+    api.best_criteria.resize(
+      input.criteria.size()
+    );
+
+    for (
+        std::size_t i = 0;
+        i < input.criteria.size();
+        ++i
+    ) {
+      api.best_criteria[i].name =
+        input.criteria[i]->name();
+    }
+
     api.last_saved_active_set.zeros(
       current_state.view().param.active_set.n_elem
     );
@@ -1427,6 +1462,55 @@ public:
           negloglik
     ) /
       denominator;
+  }
+
+  void update_best_criteria()
+  {
+    const EcountgmifsState& current =
+      current_state.view();
+
+    const std::size_t criterion_count =
+      api.best_criteria.size();
+
+    if (
+        current.criteria.size() !=
+          static_cast<R_xlen_t>(
+            criterion_count
+          )
+    ) {
+      Rcpp::stop(
+        "criterion tracking size mismatch"
+      );
+    }
+
+    for (
+        std::size_t i = 0;
+        i < criterion_count;
+        ++i
+    ) {
+      const double candidate =
+        current.criteria[
+      static_cast<R_xlen_t>(i)
+        ];
+
+      EcountgmifsBestCriterion& best =
+        api.best_criteria[i];
+
+      if (candidate >= best.value) {
+        continue;
+      }
+
+      best.value =
+        candidate;
+
+      best.state =
+        current;
+
+      best.state.pseudo_r2 =
+        pseudo_r2(
+          best.state.negloglik
+        );
+    }
   }
 
   void save_current_state(
@@ -1530,6 +1614,52 @@ public:
 
   Rcpp::List to_list() const
   {
+    const R_xlen_t criterion_count =
+      static_cast<R_xlen_t>(
+        api.best_criteria.size()
+      );
+
+    Rcpp::List best_criteria(
+        criterion_count
+    );
+
+    Rcpp::CharacterVector best_criterion_names(
+        criterion_count
+    );
+
+    for (
+        std::size_t i = 0;
+        i < api.best_criteria.size();
+        ++i
+    ) {
+      const R_xlen_t r_index =
+        static_cast<R_xlen_t>(i);
+
+      const EcountgmifsBestCriterion& best =
+        api.best_criteria[i];
+
+      best_criterion_names[
+      r_index
+      ] =
+        best.name;
+
+      best_criteria[
+      r_index
+      ] =
+        Rcpp::List::create(
+          Rcpp::Named("value") =
+            best.value,
+
+            Rcpp::Named("state") =
+              EcountgmifsStateInternal::to_list(
+                best.state
+              )
+        );
+    }
+
+    best_criteria.attr("names") =
+      best_criterion_names;
+
     Rcpp::List states(
         static_cast<R_xlen_t>(api.states.size())
     );
@@ -1582,8 +1712,11 @@ public:
                     api.saturated_family_parameters
                   ),
 
-                  Rcpp::Named("states") =
-                    states,
+                  Rcpp::Named("best_criteria") =
+                    best_criteria,
+
+                    Rcpp::Named("states") =
+                      states,
 
                     Rcpp::Named("last_saved_active_set") =
                       ecountgmifs::output::to_r_logical_vector(
@@ -1752,6 +1885,7 @@ public:
      * after the completed null fit, then save it once both baselines exist.
      */
     state.evaluate_criteria();
+    path.update_best_criteria();
     path.save_current_state(true);
 
     fit_stagewise_model();
@@ -2293,6 +2427,7 @@ private:
       );
 
       state.evaluate_criteria();
+      path.update_best_criteria();
 
       const double negloglik_current =
         state.negloglik();
@@ -2840,6 +2975,7 @@ struct EcountgmifsContextInternal
     ),
 
     path(
+      input.api,
       state,
       control.api
     ),
@@ -2883,4 +3019,26 @@ struct EcountgmifsContextInternal
   EcountgmifsContextInternal& operator=(
     EcountgmifsContextInternal&&
   ) = delete;
+
+  Rcpp::List to_list() const
+  {
+    return Rcpp::List::create(
+      Rcpp::Named("input") =
+        input.to_list(
+          control.api.include_data
+        ),
+
+      Rcpp::Named("control") =
+        control.to_list(),
+
+      Rcpp::Named("terminal_state") =
+        path.current_state_to_list(),
+
+      Rcpp::Named("path") =
+        path.to_list(),
+
+      Rcpp::Named("stagewise") =
+        stagewise.to_list()
+    );
+  }
 };
