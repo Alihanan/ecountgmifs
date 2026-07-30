@@ -690,11 +690,11 @@ public:
 };
 
 inline double effective_parameter_count(
-    const EcountgmifsContext& context
+    const EcountgmifsState& state
 )
 {
   const EcountgmifsParameters& parameters =
-    context.runtime.state.param.param;
+    state.param.param;
 
   const arma::uword beta_df =
     arma::accu(parameters.beta != 0.0);
@@ -715,14 +715,16 @@ struct AICCriterion : public IEcountgmifsCriterion
   }
 
   double evaluate(
-      const EcountgmifsContext& context
+      const EcountgmifsInput&,
+      const EcountgmifsControl&,
+      const EcountgmifsState& state
   ) const override
   {
     const double k =
-      effective_parameter_count(context);
+      effective_parameter_count(state);
 
     return
-    2.0 * context.runtime.state.negloglik +
+    2.0 * state.negloglik +
       2.0 * k;
   }
 };
@@ -735,14 +737,16 @@ struct BICCriterion : public IEcountgmifsCriterion
   }
 
   double evaluate(
-      const EcountgmifsContext& context
+      const EcountgmifsInput& input,
+      const EcountgmifsControl&,
+      const EcountgmifsState& state
   ) const override
   {
     const double k =
-      effective_parameter_count(context);
+      effective_parameter_count(state);
 
     const arma::uword n =
-      context.input.y.n_elem;
+      input.y.n_elem;
 
     if (n == 0)
       throw std::runtime_error(
@@ -750,7 +754,7 @@ struct BICCriterion : public IEcountgmifsCriterion
       );
 
     return
-    2.0 * context.runtime.state.negloglik +
+    2.0 * state.negloglik +
       std::log(static_cast<double>(n)) * k;
   }
 };

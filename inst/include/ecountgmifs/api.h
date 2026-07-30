@@ -238,15 +238,7 @@ struct EcountgmifsInput {
   bool has_prior;
   double enet_alpha;
 
-  const arma::mat& Xtest;
-  const arma::vec& ytest;
-  const arma::mat& wtest;
-  const arma::vec& offsettest;
-  const arma::vec& yorig;
-
   const arma::vec train_y_one_lgamma;
-  const arma::vec test_y_one_lgamma;
-  const arma::vec orig_y_one_lgamma;
 
   /*
    * family_link is always non-null internally.
@@ -436,9 +428,10 @@ struct IEcountgmifsCriterion
   virtual std::string name() const = 0;
 
   virtual double evaluate(
-      const EcountgmifsContext& context
+      const EcountgmifsInput& input,
+      const EcountgmifsControl& control,
+      const EcountgmifsState& state
   ) const = 0;
 };
-
 
 

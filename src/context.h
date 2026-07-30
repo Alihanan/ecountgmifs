@@ -23,12 +23,7 @@ inline void check_input_dimensions(
     const arma::vec& y,
     const arma::mat& w,
     const arma::vec& offset,
-    const arma::vec& weight_vec,
-    const arma::vec& yorig,
-    const arma::mat& Xtest,
-    const arma::vec& ytest,
-    const arma::mat& wtest,
-    const arma::vec& offsettest
+    const arma::vec& weight_vec
 ) {
   if (X.n_rows == 0 || X.n_cols == 0) {
     Rcpp::stop("matrix 'X' must have positive dimensions");
@@ -38,17 +33,6 @@ inline void check_input_dimensions(
   check_matrix_rows(w, X.n_rows, "w");
   check_vector_length(offset, X.n_rows, "offset");
   check_vector_length(weight_vec, X.n_cols, "weight_vec");
-  check_vector_length(yorig, X.n_rows, "yorig");
-
-  if (Xtest.n_rows > 0 || Xtest.n_cols > 0) {
-    if (Xtest.n_cols != X.n_cols) {
-      Rcpp::stop("matrix 'Xtest' must have the same number of columns as 'X'");
-    }
-
-    check_vector_length(ytest, Xtest.n_rows, "ytest");
-    check_matrix_rows(wtest, Xtest.n_rows, "wtest");
-    check_vector_length(offsettest, Xtest.n_rows, "offsettest");
-  }
 }
 
 
@@ -206,11 +190,6 @@ public:
     const arma::mat& w,
     const arma::vec& offset,
     const arma::vec& weight_vec,
-    const arma::vec& yorig,
-    const arma::mat& Xtest,
-    const arma::vec& ytest,
-    const arma::mat& wtest,
-    const arma::vec& offsettest,
     double enet_alpha,
     SEXP family,
     SEXP link_func,
@@ -257,15 +236,7 @@ public:
     weight_vec_has_prior(weight_vec),
     enet_alpha,
 
-    Xtest,
-    ytest,
-    wtest,
-    offsettest,
-    yorig,
-
     -1.0 * arma::lgamma(y + 1.0),
-    -1.0 * arma::lgamma(ytest + 1.0),
-    -1.0 * arma::lgamma(yorig + 1.0),
 
     family_,
     link_func_,
@@ -280,12 +251,7 @@ public:
       api.y,
       api.w,
       api.offset,
-      api.weight_vec,
-      api.yorig,
-      api.Xtest,
-      api.ytest,
-      api.wtest,
-      api.offsettest
+      api.weight_vec
     );
 
     check_matrix_finite(api.X, "X");
@@ -293,16 +259,11 @@ public:
     check_matrix_finite(api.w, "w");
     check_vector_finite(api.offset, "offset");
     check_vector_finite(api.weight_vec, "weight_vec");
-    check_vector_finite(api.yorig, "yorig");
 
     if (arma::any(api.weight_vec <= 0.0)) {
       Rcpp::stop("value of 'weight_vec' must contain only positive values");
     }
 
-    check_matrix_finite(api.Xtest, "Xtest");
-    check_vector_finite(api.ytest, "ytest");
-    check_matrix_finite(api.wtest, "wtest");
-    check_vector_finite(api.offsettest, "offsettest");
 
     check_finite_scalar(api.enet_alpha, "enet_alpha");
 
@@ -333,9 +294,6 @@ public:
       Rcpp::Named("n") = api.X.n_rows,
       Rcpp::Named("p") = api.X.n_cols,
       Rcpp::Named("q") = api.w.n_cols,
-      Rcpp::Named("n_test") = api.Xtest.n_rows,
-      Rcpp::Named("p_test") = api.Xtest.n_cols,
-      Rcpp::Named("q_test") = api.wtest.n_cols,
       Rcpp::Named("family") =
         Rcpp::List::create(
           Rcpp::Named(
@@ -370,12 +328,6 @@ public:
       out["w"] = api.w;
       out["offset"] = api.offset;
       out["weight_vec"] = api.weight_vec;
-
-      out["Xtest"] = api.Xtest;
-      out["ytest"] = api.ytest;
-      out["wtest"] = api.wtest;
-      out["offsettest"] = api.offsettest;
-      out["yorig"] = api.yorig;
     }
 
     return out;
@@ -650,14 +602,16 @@ struct EcountgmifsStateInternal
 {
 private:
   const EcountgmifsInput& input;
+  const EcountgmifsControl& control;
   EcountgmifsState api;
 
 public:
   explicit EcountgmifsStateInternal(
       const EcountgmifsInput& input_,
-      const EcountgmifsControl& control
+      const EcountgmifsControl& control_
   ) :
     input(input_),
+    control(control_),
     api {
     { // EcountgmifsPredictors
       { // EcountgmifsParameters
@@ -897,9 +851,7 @@ public:
   {
     update_negloglik();
   }
-  void evaluate_criteria(
-      const EcountgmifsContext& context
-  )
+  void evaluate_criteria()
   {
     if (
         api.criteria.size() !=
@@ -919,7 +871,9 @@ public:
     ) {
       const double value =
         input.criteria[i]->evaluate(
-            context
+          input,
+          control,
+          api
         );
 
       check_finite_scalar(
@@ -928,7 +882,7 @@ public:
       );
 
       api.criteria[
-      static_cast<R_xlen_t>(i)
+        static_cast<R_xlen_t>(i)
       ] =
         value;
     }
@@ -1794,9 +1748,10 @@ public:
 
     /*
      * The current State is still the fitted null model because saturated
-     * fitting uses separate Stagewise workspace. Save it only after both
-     * baselines are available, so its pseudo-R2 can be populated correctly.
+     * fitting uses separate Stagewise workspace. Evaluate its criteria only
+     * after the completed null fit, then save it once both baselines exist.
      */
+    state.evaluate_criteria();
     path.save_current_state(true);
 
     fit_stagewise_model();
@@ -2337,6 +2292,8 @@ private:
         iteration
       );
 
+      state.evaluate_criteria();
+
       const double negloglik_current =
         state.negloglik();
 
@@ -2804,12 +2761,6 @@ struct EcountgmifsContextInternal
     const arma::mat& w,
     const arma::vec& offset,
 
-    const arma::vec& yorig,
-    const arma::mat& Xtest,
-    const arma::vec& ytest,
-    const arma::mat& wtest,
-    const arma::vec& offsettest,
-
     const arma::vec& weight_vec,
     double enet_alpha,
     double epsilon_start,
@@ -2846,11 +2797,6 @@ struct EcountgmifsContextInternal
       w,
       offset,
       weight_vec,
-      yorig,
-      Xtest,
-      ytest,
-      wtest,
-      offsettest,
       enet_alpha,
       family,
       link_func,
