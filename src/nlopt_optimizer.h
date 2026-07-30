@@ -15,7 +15,7 @@ struct NloptOptimizerInternal
     const arma::vec& upper,
     nlopt_func objective,
     void* objective_data,
-    int algorithm,
+    nlopt_algorithm algorithm,
     double xtol_rel,
     double ftol_rel,
     int maxeval
@@ -43,7 +43,7 @@ struct NloptOptimizerInternal
     }
 
     opt = nlopt_create(
-      static_cast<nlopt_algorithm>(algorithm),
+      algorithm,
       static_cast<unsigned>(parameters_.n_elem)
     );
 

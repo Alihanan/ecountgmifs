@@ -15,8 +15,8 @@ ecountgmifs(
   family = c("negative.binomial", "poisson"),
   savefolder = NULL,
   link = c("log", "softplus"),
-  criteria = list(AIC_nnz = AIC_nnz, BIC_nnz = BIC_nnz(), SABIC_nnz = "SABIC_nnz"),
-  verbose = F,
+  criteria = NULL,
+  verbose = FALSE,
   fixed.dispersion = FALSE,
   fixed.dispersion.value = 0,
   include.data = FALSE,
@@ -24,84 +24,45 @@ ecountgmifs(
 )
 }
 \arguments{
-\item{X}{Numeric predictor matrix of dimension n * p}
+\item{X}{Numeric penalized predictor matrix.}
 
-\item{y}{Count response vector of length n}
+\item{y}{Non-negative count response.}
 
-\item{w}{numeric matrix or \code{NULL}. Unpenalized predictor matrix of
-dimension \eqn{n \times q}, where \eqn{n} is the number of observations.
-Columns of \code{w} are included in the model without stagewise
-penalization. Typical examples include an intercept, clinical covariates,
-batch indicators, exposure variables, or other adjustment variables. If
-\code{w = NULL} and \code{intercept = TRUE}, \code{w} is initialized as a
-one-column intercept matrix. If \code{intercept = FALSE}, \code{w} must be
-supplied and must contain at least one column.}
+\item{w}{Numeric unpenalized predictor matrix or \code{NULL}.}
 
-\item{intercept}{logical. Should an intercept column be included in the
-unpenalized design matrix \code{w}? If \code{TRUE}, a column of ones is
-added to \code{w}. If \code{w = NULL} or \code{ncol(w) = 0}, then
-\code{w} is initialized as a one-column intercept matrix. If
-\code{FALSE}, \code{w} must be supplied and must contain at least one
-column.}
+\item{intercept}{Logical. Add an intercept column to \code{w}.}
 
-\item{weight.vec}{Optional prior weight vector of length p}
+\item{offset}{Numeric offset vector or \code{NULL}.}
 
-\item{enet.alpha}{numeric. Elastic-net mixing parameter controlling the
-relative contribution of the \eqn{\ell_1} and \eqn{\ell_2} components in
-the stagewise update. Values must be between 0 and 1. The value
-\code{enet.alpha = 1} gives the lasso-type update, while
-\code{enet.alpha = 0} gives the ridge-type update. Intermediate values use
-a convex combination of the two penalties.}
+\item{weight.vec}{Positive elastic-net prior weights or \code{NULL}.}
 
-\item{family}{Model family. Currently \code{"negative.binomial"} only.}
+\item{enet.alpha}{Elastic-net mixing parameter in \verb{[0, 1]}.}
 
-\item{criteria}{criterion object, function, character, list, or \code{NULL}.
-Model-selection criteria evaluated along the fitted path. A criterion may
-be supplied as an object of class \code{"ecountgmifs.criterion"}, as returned by
-\code{\link[=ecountgmifs.compile.criterion]{ecountgmifs.compile.criterion()}}, as a zero-argument function returning
-such an object, such as \link{BIC_nnz}, or as a character string naming such a
-function, such as \code{"BIC_nnz"}. A single criterion may be supplied directly,
-or multiple criteria may be supplied as a list. Named list elements are
-used as output names.}
+\item{family}{Either \code{"negative.binomial"} or \code{"poisson"}.}
 
-\item{verbose}{logical, if TRUE the step number is printed to the console (default is FALSE).}
+\item{savefolder}{Retained for compatibility; currently unused.}
 
-\item{fixed.dispersion}{logical. Should the negative-binomial
-dispersion parameter be fixed during fitting? If \code{FALSE}, the
-dispersion parameter is re-estimated along the stagewise path using the
-internal numerical optimization routine. If \code{TRUE}, the value supplied
-in \code{fixed.dispersion.value} is used throughout fitting.}
+\item{link}{Either \code{"log"} or \code{"softplus"}.}
 
-\item{fixed.dispersion.value}{numeric. Fixed value of the
-negative-binomial dispersion parameter used when
-\code{fixed.dispersion = TRUE}. Ignored when
-\code{fixed.dispersion = FALSE}.}
+\item{criteria}{A criterion external pointer, a list of criterion external
+pointers, \code{NULL} for the example AIC/BIC/SABIC set, or an empty list to
+disable criteria.}
 
-\item{control}{A control object from \code{\link[=ecountgmifs.control]{ecountgmifs.control()}}.}
+\item{verbose}{Logical. Print fitting progress.}
+
+\item{fixed.dispersion}{Logical. Fixed NB2 dispersion is not yet supported by
+the current plugin interface.}
+
+\item{fixed.dispersion.value}{Retained for compatibility.}
+
+\item{include.data}{Logical. Include input data in the result.}
+
+\item{control}{An object returned by \code{\link[=ecountgmifs.control]{ecountgmifs.control()}}.}
 }
 \value{
 An object of class \code{"ecountgmifs"}.
 }
 \description{
-Fits an extended generalized monotone incremental forward stagewise model
+Fits an extended generalized monotone incremental forward-stagewise model
 for high-dimensional count outcomes.
-}
-\details{
-The default \code{criteria} value is intentionally written as a representative
-example:
-
-\preformatted{
-criteria = list(
-  "AIC_nnz" = AIC_nnz,
-  "BIC_nnz" = BIC_nnz(),
-  "SABIC_nnz" = "SABIC_nnz"
-)
-}
-
-This shows the three accepted forms: a criterion-constructor function
-such as \code{AIC_nnz}, an already compiled criterion object such as
-\code{BIC_nnz()}, and the character name of a criterion-constructor
-function such as \code{"SABIC_nnz"}. Character values are resolved to
-functions and called. This allows users to define their own
-criterion-constructor functions and pass them by name.
 }

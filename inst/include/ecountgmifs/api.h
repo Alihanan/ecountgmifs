@@ -1,6 +1,7 @@
 #pragma once
 
 #include <RcppArmadillo.h>
+#include <nloptrAPI.h>
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -262,13 +263,27 @@ struct EcountgmifsInput {
  * The matrix/vector fields are const references, so plugins can read but should
  * not mutate package-owned data.
  */
+struct EcountgmifsNloptControl
+{
+  nlopt_algorithm algorithm;
+  double xtol_rel;
+  double ftol_rel;
+  int maxeval;
+};
+
 struct EcountgmifsControl {
-  uint64_t iteration_max;
+  uint64_t null_iteration_max;
+  uint64_t stagewise_iteration_max;
+
+  double null_family_parameter_abs_tol;
+  double stagewise_objective_rel_tol;
+  double stagewise_beta_step_norm_tol;
+
   double epsilon_max;
   double epsilon_start;
   double epsilon_min;
-  double tol;
   double loglik_reltol_cutoff;
+
   double enet_abs_tol;
   double enet_rel_tol;
   uint32_t enet_max_iter;
@@ -282,10 +297,9 @@ struct EcountgmifsControl {
   const arma::vec& theta_lower_bounds;
   const arma::vec& theta_upper_bounds;
 
-  int nlopt_algorithm;
-  double nlopt_xtol_rel;
-  double nlopt_ftol_rel;
-  int nlopt_maxeval;
+  EcountgmifsNloptControl nonpen_nlopt;
+  EcountgmifsNloptControl family_nlopt;
+  EcountgmifsNloptControl link_nlopt;
 };
 
 struct EcountgmifsParameters
@@ -447,6 +461,3 @@ struct IEcountgmifsCriterion
       const EcountgmifsState& state
   ) const = 0;
 };
-
-
-

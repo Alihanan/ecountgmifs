@@ -1,87 +1,60 @@
 #' Auxiliary control for extended count GMIFS fitting
 #'
 #' @description
-#' Creates a control object for [ecountgmifs()]. This function is normally used
-#' through the `control` argument of [ecountgmifs()].
+#' Creates a control object for [ecountgmifs()]. Null-model and stagewise
+#' iteration limits are independent. NLopt settings are shared by parameter
+#' block: nonpenalized, family, and link parameters.
 #'
-#' @details
-#' The returned values control the forward-stagewise path, adaptive step size,
-#' convergence rules, elastic-net calculations, internal NLopt optimization,
-#' initialization of unpenalized coefficients, and path-state storage.
-#'
-#' The state-tracking strategy controls how much information is retained along
-#' the fitted path. The `"active.set.change"` strategy stores a compressed path,
-#' while `"all.iteration"` stores every iteration.
-#'
-#' Module-specific controls do not belong in this object. For example,
-#' negative-binomial dispersion initialization, dispersion bounds, mean caps,
-#' and the Poisson fallback threshold are supplied when constructing the
-#' negative-binomial family object.
-#'
-#' @param iteration.max Positive integer. Maximum number of stagewise
-#'   iterations.
-#' @param epsilon.max Positive numeric value. Maximum permitted stagewise step
-#'   size.
-#' @param epsilon.start Positive numeric value. Initial stagewise step size.
-#' @param epsilon.min Non-negative numeric value. Minimum permitted stagewise
-#'   step size.
-#' @param tol Positive numeric value. General numerical convergence tolerance.
-#' @param loglik.reltol.cutoff Non-negative relative log-likelihood cutoff used
-#'   by the stopping rule corresponding to the pseudo-\eqn{R^2} threshold.
-#' @param enet.abs.tol Positive absolute tolerance used by the weighted
+#' @param null.iteration.max Positive integer. Maximum number of outer
+#'   theta/link/family alternations used to fit the null model.
+#' @param stagewise.iteration.max Positive integer. Maximum number of completed
+#'   forward-stagewise iterations.
+#' @param null.family.parameter.abs.tol Positive numeric value. Absolute
+#'   tolerance used when comparing family parameters between consecutive
+#'   null-model outer iterations.
+#' @param stagewise.objective.rel.tol Non-negative relative
+#'   negative-log-likelihood tolerance for stagewise stopping.
+#' @param stagewise.beta.step.norm.tol Non-negative Euclidean beta-step norm
+#'   threshold for stagewise stopping.
+#' @param epsilon.max Positive maximum stagewise step.
+#' @param epsilon.start Positive initial stagewise step.
+#' @param epsilon.min Non-negative minimum stagewise step.
+#' @param loglik.reltol.cutoff Non-negative relative cutoff for the pseudo-R2
+#'   stopping rule.
+#' @param enet.abs.tol Positive absolute tolerance for the weighted elastic-net
+#'   solver.
+#' @param enet.rel.tol Non-negative relative tolerance for the weighted
 #'   elastic-net solver.
-#' @param enet.rel.tol Non-negative relative tolerance used by the weighted
-#'   elastic-net solver.
-#' @param enet.max.iter Positive integer. Maximum number of elastic-net solver
-#'   iterations.
-#' @param state.track.strategy Character value specifying the path-state
-#'   tracking strategy. One of:
-#'   \describe{
-#'     \item{\code{"active.set.change"}}{
-#'       Store states when the active set changes.
-#'     }
-#'     \item{\code{"all.iteration"}}{
-#'       Store the state at every stagewise iteration.
-#'     }
-#'     \item{\code{"every.k.iteration"}}{
-#'       Store the state every \code{state.track.freq} iterations.
-#'     }
-#'     \item{\code{"none"}}{
-#'       Do not store stagewise path states.
-#'     }
-#'   }
-#' @param state.track.freq Positive integer. Tracking frequency used for
+#' @param enet.max.iter Positive maximum elastic-net bisection iterations.
+#' @param state.track.strategy Character path-state tracking strategy.
+#' @param state.track.freq Positive integer used by
 #'   `state.track.strategy = "every.k.iteration"`.
-#' @param verbose Logical value. Whether fitting progress should be printed.
-#' @param include.data Logical value. Whether input data should be included in
-#'   the returned object.
-#' @param theta.initial Numeric vector containing initial values of the
-#'   unpenalized coefficients. A scalar may be expanded by [ecountgmifs()] to
-#'   the number of columns of the unpenalized design matrix.
-#' @param theta.lower.bounds Numeric vector containing lower bounds for
-#'   `theta`. Infinite values are allowed. A scalar may be expanded by
-#'   [ecountgmifs()].
-#' @param theta.upper.bounds Numeric vector containing upper bounds for
-#'   `theta`. Infinite values are allowed. A scalar may be expanded by
-#'   [ecountgmifs()].
-#' @param nlopt.algorithm Integer NLopt algorithm identifier. The default,
-#'   `28L`, corresponds to `NLOPT_LN_NELDERMEAD`.
-#' @param nlopt.xtol.rel Non-negative relative parameter tolerance for NLopt.
-#'   A value of zero disables this stopping condition.
-#' @param nlopt.ftol.rel Non-negative relative objective tolerance for NLopt.
-#'   A value of zero disables this stopping condition.
-#' @param nlopt.maxeval Positive integer. Maximum number of NLopt objective
-#'   evaluations.
+#' @param verbose Logical. Print fitting progress.
+#' @param include.data Logical. Include input data in the returned object.
+#' @param theta.initial Initial unpenalized coefficients.
+#' @param theta.lower.bounds Lower bounds for unpenalized coefficients.
+#' @param theta.upper.bounds Upper bounds for unpenalized coefficients.
+#' @param nonpen.nlopt.algorithm,family.nlopt.algorithm,link.nlopt.algorithm
+#'   Non-negative NLopt algorithm identifiers. Each setting is shared across
+#'   all fitting phases for the corresponding parameter block.
+#' @param nonpen.nlopt.xtol.rel,family.nlopt.xtol.rel,link.nlopt.xtol.rel
+#'   Non-negative relative parameter tolerances.
+#' @param nonpen.nlopt.ftol.rel,family.nlopt.ftol.rel,link.nlopt.ftol.rel
+#'   Non-negative relative objective tolerances.
+#' @param nonpen.nlopt.maxeval,family.nlopt.maxeval,link.nlopt.maxeval
+#'   Positive maximum NLopt evaluation counts.
 #'
 #' @return A list of control parameters.
-#'
 #' @export
 ecountgmifs.control <- function(
-    iteration.max = 10000L,
+    null.iteration.max = 1000L,
+    stagewise.iteration.max = 10000L,
+    null.family.parameter.abs.tol = 1e-8,
+    stagewise.objective.rel.tol = 1e-8,
+    stagewise.beta.step.norm.tol = .Machine$double.eps,
     epsilon.max = 0.01,
     epsilon.start = 1e-6,
     epsilon.min = .Machine$double.eps,
-    tol = 1e-8,
     loglik.reltol.cutoff = 0.25,
     enet.abs.tol = 1e-10,
     enet.rel.tol = 1e-6,
@@ -98,18 +71,29 @@ ecountgmifs.control <- function(
     theta.initial = 0,
     theta.lower.bounds = -Inf,
     theta.upper.bounds = Inf,
-    nlopt.algorithm = 28L,
-    nlopt.xtol.rel = tol,
-    nlopt.ftol.rel = tol,
-    nlopt.maxeval = 100L
+
+    nonpen.nlopt.algorithm = 28L,
+    nonpen.nlopt.xtol.rel = 1e-8,
+    nonpen.nlopt.ftol.rel = 1e-8,
+    nonpen.nlopt.maxeval = 100L,
+
+    family.nlopt.algorithm = 28L,
+    family.nlopt.xtol.rel = 1e-8,
+    family.nlopt.ftol.rel = 1e-8,
+    family.nlopt.maxeval = 100L,
+
+    link.nlopt.algorithm = 28L,
+    link.nlopt.xtol.rel = 1e-8,
+    link.nlopt.ftol.rel = 1e-8,
+    link.nlopt.maxeval = 100L
 ) {
   check_scalar_numeric <- function(
-    value,
-    name,
-    lower = -Inf,
-    lower_inclusive = TRUE
+      value,
+      name,
+      lower = -Inf,
+      lower.inclusive = TRUE
   ) {
-    valid_lower <- if (lower_inclusive) {
+    valid.lower <- if (lower.inclusive) {
       value >= lower
     } else {
       value > lower
@@ -120,9 +104,9 @@ ecountgmifs.control <- function(
       length(value) != 1L ||
       is.na(value) ||
       !is.finite(value) ||
-      !valid_lower
+      !valid.lower
     ) {
-      comparison <- if (lower_inclusive) ">=" else ">"
+      comparison <- if (lower.inclusive) ">=" else ">"
 
       stop(
         sprintf(
@@ -156,6 +140,26 @@ ecountgmifs.control <- function(
     }
   }
 
+  check_algorithm <- function(value, name) {
+    if (
+      !is.numeric(value) ||
+      length(value) != 1L ||
+      is.na(value) ||
+      !is.finite(value) ||
+      value < 0 ||
+      value != floor(value) ||
+      value > .Machine$integer.max
+    ) {
+      stop(
+        sprintf(
+          "value of '%s' must be a non-negative integer",
+          name
+        ),
+        call. = FALSE
+      )
+    }
+  }
+
   check_logical_scalar <- function(value, name) {
     if (
       !is.logical(value) ||
@@ -173,9 +177,9 @@ ecountgmifs.control <- function(
   }
 
   check_theta_vector <- function(
-    value,
-    name,
-    finite = FALSE
+      value,
+      name,
+      finite = FALSE
   ) {
     if (
       !is.numeric(value) ||
@@ -207,29 +211,52 @@ ecountgmifs.control <- function(
     match.arg(state.track.strategy)
 
   check_positive_integer(
-    iteration.max,
-    "iteration.max"
+    null.iteration.max,
+    "null.iteration.max"
+  )
+
+  check_positive_integer(
+    stagewise.iteration.max,
+    "stagewise.iteration.max"
+  )
+
+  check_scalar_numeric(
+    null.family.parameter.abs.tol,
+    "null.family.parameter.abs.tol",
+    lower = 0,
+    lower.inclusive = FALSE
+  )
+
+  check_scalar_numeric(
+    stagewise.objective.rel.tol,
+    "stagewise.objective.rel.tol",
+    lower = 0
+  )
+
+  check_scalar_numeric(
+    stagewise.beta.step.norm.tol,
+    "stagewise.beta.step.norm.tol",
+    lower = 0
   )
 
   check_scalar_numeric(
     epsilon.max,
     "epsilon.max",
     lower = 0,
-    lower_inclusive = FALSE
+    lower.inclusive = FALSE
   )
 
   check_scalar_numeric(
     epsilon.start,
     "epsilon.start",
     lower = 0,
-    lower_inclusive = FALSE
+    lower.inclusive = FALSE
   )
 
   check_scalar_numeric(
     epsilon.min,
     "epsilon.min",
-    lower = 0,
-    lower_inclusive = TRUE
+    lower = 0
   )
 
   if (epsilon.min > epsilon.start) {
@@ -247,31 +274,22 @@ ecountgmifs.control <- function(
   }
 
   check_scalar_numeric(
-    tol,
-    "tol",
-    lower = 0,
-    lower_inclusive = FALSE
-  )
-
-  check_scalar_numeric(
     loglik.reltol.cutoff,
     "loglik.reltol.cutoff",
-    lower = 0,
-    lower_inclusive = TRUE
+    lower = 0
   )
 
   check_scalar_numeric(
     enet.abs.tol,
     "enet.abs.tol",
     lower = 0,
-    lower_inclusive = FALSE
+    lower.inclusive = FALSE
   )
 
   check_scalar_numeric(
     enet.rel.tol,
     "enet.rel.tol",
-    lower = 0,
-    lower_inclusive = TRUE
+    lower = 0
   )
 
   check_positive_integer(
@@ -370,59 +388,152 @@ ecountgmifs.control <- function(
     )
   }
 
-  if (
-    !is.numeric(nlopt.algorithm) ||
-    length(nlopt.algorithm) != 1L ||
-    is.na(nlopt.algorithm) ||
-    !is.finite(nlopt.algorithm) ||
-    nlopt.algorithm < 0 ||
-    nlopt.algorithm != floor(nlopt.algorithm)
-  ) {
-    stop(
-      "value of 'nlopt.algorithm' must be a non-negative integer",
-      call. = FALSE
+  nlopt.prefixes <- c(
+    "nonpen",
+    "family",
+    "link"
+  )
+
+  nlopt.algorithms <- c(
+    nonpen.nlopt.algorithm,
+    family.nlopt.algorithm,
+    link.nlopt.algorithm
+  )
+
+  nlopt.xtol.rels <- c(
+    nonpen.nlopt.xtol.rel,
+    family.nlopt.xtol.rel,
+    link.nlopt.xtol.rel
+  )
+
+  nlopt.ftol.rels <- c(
+    nonpen.nlopt.ftol.rel,
+    family.nlopt.ftol.rel,
+    link.nlopt.ftol.rel
+  )
+
+  nlopt.maxevals <- c(
+    nonpen.nlopt.maxeval,
+    family.nlopt.maxeval,
+    link.nlopt.maxeval
+  )
+
+  for (i in seq_along(nlopt.prefixes)) {
+    check_algorithm(
+      nlopt.algorithms[[i]],
+      paste0(
+        nlopt.prefixes[[i]],
+        ".nlopt.algorithm"
+      )
+    )
+
+    check_scalar_numeric(
+      nlopt.xtol.rels[[i]],
+      paste0(
+        nlopt.prefixes[[i]],
+        ".nlopt.xtol.rel"
+      ),
+      lower = 0
+    )
+
+    check_scalar_numeric(
+      nlopt.ftol.rels[[i]],
+      paste0(
+        nlopt.prefixes[[i]],
+        ".nlopt.ftol.rel"
+      ),
+      lower = 0
+    )
+
+    check_positive_integer(
+      nlopt.maxevals[[i]],
+      paste0(
+        nlopt.prefixes[[i]],
+        ".nlopt.maxeval"
+      )
     )
   }
 
-  check_scalar_numeric(
-    nlopt.xtol.rel,
-    "nlopt.xtol.rel",
-    lower = 0,
-    lower_inclusive = TRUE
-  )
-
-  check_scalar_numeric(
-    nlopt.ftol.rel,
-    "nlopt.ftol.rel",
-    lower = 0,
-    lower_inclusive = TRUE
-  )
-
-  check_positive_integer(
-    nlopt.maxeval,
-    "nlopt.maxeval"
-  )
-
   list(
-    iteration.max = as.integer(iteration.max),
+    null.iteration.max =
+      as.integer(null.iteration.max),
+
+    stagewise.iteration.max =
+      as.integer(stagewise.iteration.max),
+
+    null.family.parameter.abs.tol =
+      null.family.parameter.abs.tol,
+
+    stagewise.objective.rel.tol =
+      stagewise.objective.rel.tol,
+
+    stagewise.beta.step.norm.tol =
+      stagewise.beta.step.norm.tol,
+
     epsilon.max = epsilon.max,
     epsilon.start = epsilon.start,
     epsilon.min = epsilon.min,
-    tol = tol,
-    loglik.reltol.cutoff = loglik.reltol.cutoff,
+
+    loglik.reltol.cutoff =
+      loglik.reltol.cutoff,
+
     enet.abs.tol = enet.abs.tol,
     enet.rel.tol = enet.rel.tol,
-    enet.max.iter = as.integer(enet.max.iter),
-    state.track.strategy = state.track.strategy,
-    state.track.freq = as.integer(state.track.freq),
+    enet.max.iter =
+      as.integer(enet.max.iter),
+
+    state.track.strategy =
+      state.track.strategy,
+
+    state.track.freq =
+      as.integer(state.track.freq),
+
     verbose = verbose,
     include.data = include.data,
+
     theta.initial = theta.initial,
-    theta.lower.bounds = theta.lower.bounds,
-    theta.upper.bounds = theta.upper.bounds,
-    nlopt.algorithm = as.integer(nlopt.algorithm),
-    nlopt.xtol.rel = nlopt.xtol.rel,
-    nlopt.ftol.rel = nlopt.ftol.rel,
-    nlopt.maxeval = as.integer(nlopt.maxeval)
+    theta.lower.bounds =
+      theta.lower.bounds,
+    theta.upper.bounds =
+      theta.upper.bounds,
+
+    nonpen.nlopt.algorithm =
+      as.integer(
+        nonpen.nlopt.algorithm
+      ),
+    nonpen.nlopt.xtol.rel =
+      nonpen.nlopt.xtol.rel,
+    nonpen.nlopt.ftol.rel =
+      nonpen.nlopt.ftol.rel,
+    nonpen.nlopt.maxeval =
+      as.integer(
+        nonpen.nlopt.maxeval
+      ),
+
+    family.nlopt.algorithm =
+      as.integer(
+        family.nlopt.algorithm
+      ),
+    family.nlopt.xtol.rel =
+      family.nlopt.xtol.rel,
+    family.nlopt.ftol.rel =
+      family.nlopt.ftol.rel,
+    family.nlopt.maxeval =
+      as.integer(
+        family.nlopt.maxeval
+      ),
+
+    link.nlopt.algorithm =
+      as.integer(
+        link.nlopt.algorithm
+      ),
+    link.nlopt.xtol.rel =
+      link.nlopt.xtol.rel,
+    link.nlopt.ftol.rel =
+      link.nlopt.ftol.rel,
+    link.nlopt.maxeval =
+      as.integer(
+        link.nlopt.maxeval
+      )
   )
 }

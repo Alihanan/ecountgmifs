@@ -5,11 +5,14 @@
 \title{Auxiliary control for extended count GMIFS fitting}
 \usage{
 ecountgmifs.control(
-  iteration.max = 10000L,
+  null.iteration.max = 1000L,
+  stagewise.iteration.max = 10000L,
+  null.family.parameter.abs.tol = 1e-08,
+  stagewise.objective.rel.tol = 1e-08,
+  stagewise.beta.step.norm.tol = .Machine$double.eps,
   epsilon.max = 0.01,
   epsilon.start = 1e-06,
   epsilon.min = .Machine$double.eps,
-  tol = 1e-08,
   loglik.reltol.cutoff = 0.25,
   enet.abs.tol = 1e-10,
   enet.rel.tol = 1e-06,
@@ -22,105 +25,83 @@ ecountgmifs.control(
   theta.initial = 0,
   theta.lower.bounds = -Inf,
   theta.upper.bounds = Inf,
-  nlopt.algorithm = 28L,
-  nlopt.xtol.rel = tol,
-  nlopt.ftol.rel = tol,
-  nlopt.maxeval = 100L
+  nonpen.nlopt.algorithm = 28L,
+  nonpen.nlopt.xtol.rel = 1e-08,
+  nonpen.nlopt.ftol.rel = 1e-08,
+  nonpen.nlopt.maxeval = 100L,
+  family.nlopt.algorithm = 28L,
+  family.nlopt.xtol.rel = 1e-08,
+  family.nlopt.ftol.rel = 1e-08,
+  family.nlopt.maxeval = 100L,
+  link.nlopt.algorithm = 28L,
+  link.nlopt.xtol.rel = 1e-08,
+  link.nlopt.ftol.rel = 1e-08,
+  link.nlopt.maxeval = 100L
 )
 }
 \arguments{
-\item{iteration.max}{Positive integer. Maximum number of stagewise
-iterations.}
+\item{null.iteration.max}{Positive integer. Maximum number of outer
+theta/link/family alternations used to fit the null model.}
 
-\item{epsilon.max}{Positive numeric value. Maximum permitted stagewise step
-size.}
+\item{stagewise.iteration.max}{Positive integer. Maximum number of completed
+forward-stagewise iterations.}
 
-\item{epsilon.start}{Positive numeric value. Initial stagewise step size.}
+\item{null.family.parameter.abs.tol}{Positive numeric value. Absolute
+tolerance used when comparing family parameters between consecutive
+null-model outer iterations.}
 
-\item{epsilon.min}{Non-negative numeric value. Minimum permitted stagewise
-step size.}
+\item{stagewise.objective.rel.tol}{Non-negative relative
+negative-log-likelihood tolerance for stagewise stopping.}
 
-\item{tol}{Positive numeric value. General numerical convergence tolerance.}
+\item{stagewise.beta.step.norm.tol}{Non-negative Euclidean beta-step norm
+threshold for stagewise stopping.}
 
-\item{loglik.reltol.cutoff}{Non-negative relative log-likelihood cutoff used
-by the stopping rule corresponding to the pseudo-\eqn{R^2} threshold.}
+\item{epsilon.max}{Positive maximum stagewise step.}
 
-\item{enet.abs.tol}{Positive absolute tolerance used by the weighted
+\item{epsilon.start}{Positive initial stagewise step.}
+
+\item{epsilon.min}{Non-negative minimum stagewise step.}
+
+\item{loglik.reltol.cutoff}{Non-negative relative cutoff for the pseudo-R2
+stopping rule.}
+
+\item{enet.abs.tol}{Positive absolute tolerance for the weighted elastic-net
+solver.}
+
+\item{enet.rel.tol}{Non-negative relative tolerance for the weighted
 elastic-net solver.}
 
-\item{enet.rel.tol}{Non-negative relative tolerance used by the weighted
-elastic-net solver.}
+\item{enet.max.iter}{Positive maximum elastic-net bisection iterations.}
 
-\item{enet.max.iter}{Positive integer. Maximum number of elastic-net solver
-iterations.}
+\item{state.track.strategy}{Character path-state tracking strategy.}
 
-\item{state.track.strategy}{Character value specifying the path-state
-tracking strategy. One of:
-\describe{
-\item{\code{"active.set.change"}}{
-Store states when the active set changes.
-}
-\item{\code{"all.iteration"}}{
-Store the state at every stagewise iteration.
-}
-\item{\code{"every.k.iteration"}}{
-Store the state every \code{state.track.freq} iterations.
-}
-\item{\code{"none"}}{
-Do not store stagewise path states.
-}
-}}
-
-\item{state.track.freq}{Positive integer. Tracking frequency used for
+\item{state.track.freq}{Positive integer used by
 \code{state.track.strategy = "every.k.iteration"}.}
 
-\item{verbose}{Logical value. Whether fitting progress should be printed.}
+\item{verbose}{Logical. Print fitting progress.}
 
-\item{include.data}{Logical value. Whether input data should be included in
-the returned object.}
+\item{include.data}{Logical. Include input data in the returned object.}
 
-\item{theta.initial}{Numeric vector containing initial values of the
-unpenalized coefficients. A scalar may be expanded by \code{\link[=ecountgmifs]{ecountgmifs()}} to
-the number of columns of the unpenalized design matrix.}
+\item{theta.initial}{Initial unpenalized coefficients.}
 
-\item{theta.lower.bounds}{Numeric vector containing lower bounds for
-\code{theta}. Infinite values are allowed. A scalar may be expanded by
-\code{\link[=ecountgmifs]{ecountgmifs()}}.}
+\item{theta.lower.bounds}{Lower bounds for unpenalized coefficients.}
 
-\item{theta.upper.bounds}{Numeric vector containing upper bounds for
-\code{theta}. Infinite values are allowed. A scalar may be expanded by
-\code{\link[=ecountgmifs]{ecountgmifs()}}.}
+\item{theta.upper.bounds}{Upper bounds for unpenalized coefficients.}
 
-\item{nlopt.algorithm}{Integer NLopt algorithm identifier. The default,
-\code{28L}, corresponds to \code{NLOPT_LN_NELDERMEAD}.}
+\item{nonpen.nlopt.algorithm, family.nlopt.algorithm, link.nlopt.algorithm}{Non-negative NLopt algorithm identifiers. Each setting is shared across
+all fitting phases for the corresponding parameter block.}
 
-\item{nlopt.xtol.rel}{Non-negative relative parameter tolerance for NLopt.
-A value of zero disables this stopping condition.}
+\item{nonpen.nlopt.xtol.rel, family.nlopt.xtol.rel, link.nlopt.xtol.rel}{Non-negative relative parameter tolerances.}
 
-\item{nlopt.ftol.rel}{Non-negative relative objective tolerance for NLopt.
-A value of zero disables this stopping condition.}
+\item{nonpen.nlopt.ftol.rel, family.nlopt.ftol.rel, link.nlopt.ftol.rel}{Non-negative relative objective tolerances.}
 
-\item{nlopt.maxeval}{Positive integer. Maximum number of NLopt objective
-evaluations.}
+\item{nonpen.nlopt.maxeval, family.nlopt.maxeval, link.nlopt.maxeval}{Positive maximum NLopt evaluation counts.}
 }
 \value{
 A list of control parameters.
 }
 \description{
-Creates a control object for \code{\link[=ecountgmifs]{ecountgmifs()}}. This function is normally used
-through the \code{control} argument of \code{\link[=ecountgmifs]{ecountgmifs()}}.
-}
-\details{
-The returned values control the forward-stagewise path, adaptive step size,
-convergence rules, elastic-net calculations, internal NLopt optimization,
-initialization of unpenalized coefficients, and path-state storage.
-
-The state-tracking strategy controls how much information is retained along
-the fitted path. The \code{"active.set.change"} strategy stores a compressed path,
-while \code{"all.iteration"} stores every iteration.
-
-Module-specific controls do not belong in this object. For example,
-negative-binomial dispersion initialization, dispersion bounds, mean caps,
-and the Poisson fallback threshold are supplied when constructing the
-negative-binomial family object.
+Creates a control object for \code{\link[=ecountgmifs]{ecountgmifs()}}. Null-model and stagewise
+iteration limits are independent. NLopt settings are shared by parameter
+block: nonpenalized, family, and link parameters.
 }

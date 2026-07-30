@@ -473,11 +473,14 @@ struct EcountgmifsControlInternal
 
   EcountgmifsControlInternal(
     const EcountgmifsInput& input,
-    uint64_t iteration_max,
+    uint64_t null_iteration_max,
+    uint64_t stagewise_iteration_max,
+    double null_family_parameter_abs_tol,
+    double stagewise_objective_rel_tol,
+    double stagewise_beta_step_norm_tol,
     double epsilon_max,
     double epsilon_start,
     double epsilon_min,
-    double tol,
     double loglik_reltol_cutoff,
     double enet_abs_tol,
     double enet_rel_tol,
@@ -490,56 +493,105 @@ struct EcountgmifsControlInternal
     const arma::vec& theta_initial,
     const arma::vec& theta_lower_bounds,
     const arma::vec& theta_upper_bounds,
-    int nlopt_algorithm,
-    double nlopt_xtol_rel,
-    double nlopt_ftol_rel,
-    int nlopt_maxeval
+
+    const EcountgmifsNloptControl& nonpen_nlopt,
+    const EcountgmifsNloptControl& family_nlopt,
+    const EcountgmifsNloptControl& link_nlopt
   ) :
     api {
-    iteration_max,
-    epsilon_max,
-    epsilon_start,
-    epsilon_min,
-    tol,
-    loglik_reltol_cutoff,
-    enet_abs_tol,
-    enet_rel_tol,
-    enet_max_iter,
+      null_iteration_max,
+      stagewise_iteration_max,
+      null_family_parameter_abs_tol,
+      stagewise_objective_rel_tol,
+      stagewise_beta_step_norm_tol,
+      epsilon_max,
+      epsilon_start,
+      epsilon_min,
+      loglik_reltol_cutoff,
+      enet_abs_tol,
+      enet_rel_tol,
+      enet_max_iter,
 
-    as_track_strategy(state_track_strategy),
-    state_track_freq,
-    verbose,
-    include_data,
+      as_track_strategy(state_track_strategy),
+      state_track_freq,
+      verbose,
+      include_data,
 
-    theta_initial,
-    theta_lower_bounds,
-    theta_upper_bounds,
+      theta_initial,
+      theta_lower_bounds,
+      theta_upper_bounds,
 
-    nlopt_algorithm,
-    nlopt_xtol_rel,
-    nlopt_ftol_rel,
-    nlopt_maxeval
-  }
+      nonpen_nlopt,
+      family_nlopt,
+      link_nlopt
+    }
   {
-    check_positive_integer(api.iteration_max, "iteration_max");
+    check_positive_integer(
+      api.null_iteration_max,
+      "null_iteration_max"
+    );
 
-    check_positive_scalar(api.tol, "tol");
-    check_nonnegative_scalar(api.loglik_reltol_cutoff, "loglik_reltol_cutoff");
-    check_positive_scalar(api.enet_abs_tol, "enet_abs_tol");
-    check_nonnegative_scalar(api.enet_rel_tol, "enet_rel_tol");
-    check_positive_integer(api.enet_max_iter, "enet_max_iter");
+    check_positive_integer(
+      api.stagewise_iteration_max,
+      "stagewise_iteration_max"
+    );
 
+    check_positive_scalar(
+      api.null_family_parameter_abs_tol,
+      "null_family_parameter_abs_tol"
+    );
 
-    check_positive_scalar(api.epsilon_max, "epsilon_max");
-    check_positive_scalar(api.epsilon_start, "epsilon_start");
-    check_nonnegative_scalar(api.epsilon_min, "epsilon_min");
+    check_nonnegative_scalar(
+      api.stagewise_objective_rel_tol,
+      "stagewise_objective_rel_tol"
+    );
+
+    check_nonnegative_scalar(
+      api.stagewise_beta_step_norm_tol,
+      "stagewise_beta_step_norm_tol"
+    );
+
+    check_nonnegative_scalar(
+      api.loglik_reltol_cutoff,
+      "loglik_reltol_cutoff"
+    );
+
+    check_positive_scalar(
+      api.enet_abs_tol,
+      "enet_abs_tol"
+    );
+
+    check_nonnegative_scalar(
+      api.enet_rel_tol,
+      "enet_rel_tol"
+    );
+
+    check_positive_integer(
+      api.enet_max_iter,
+      "enet_max_iter"
+    );
+
+    check_positive_scalar(
+      api.epsilon_max,
+      "epsilon_max"
+    );
+
+    check_positive_scalar(
+      api.epsilon_start,
+      "epsilon_start"
+    );
+
+    check_nonnegative_scalar(
+      api.epsilon_min,
+      "epsilon_min"
+    );
+
     check_initial_bounds(
       api.epsilon_start,
       api.epsilon_min,
       api.epsilon_max,
       "epsilon"
     );
-
 
     check_initial_bounds(
       api.theta_initial,
@@ -548,19 +600,20 @@ struct EcountgmifsControlInternal
       input.w.n_cols,
       "theta"
     );
-    check_nonnegative_scalar(
-      api.nlopt_xtol_rel,
-      "nlopt_xtol_rel"
+
+    check_nlopt_control(
+      api.nonpen_nlopt,
+      "nonpen_nlopt"
     );
 
-    check_nonnegative_scalar(
-      api.nlopt_ftol_rel,
-      "nlopt_ftol_rel"
+    check_nlopt_control(
+      api.family_nlopt,
+      "family_nlopt"
     );
 
-    check_positive_integer(
-      api.nlopt_maxeval,
-      "nlopt_maxeval"
+    check_nlopt_control(
+      api.link_nlopt,
+      "link_nlopt"
     );
 
     if (
@@ -572,47 +625,151 @@ struct EcountgmifsControlInternal
         "state_track_freq"
       );
     }
-
   }
 
   Rcpp::List to_list() const
   {
     return Rcpp::List::create(
-      Rcpp::Named("iteration_max") = api.iteration_max,
-      Rcpp::Named("epsilon_max") = api.epsilon_max,
-      Rcpp::Named("epsilon_start") = api.epsilon_start,
-      Rcpp::Named("epsilon_min") = api.epsilon_min,
-      Rcpp::Named("tol") = api.tol,
-      Rcpp::Named("loglik_reltol_cutoff") = api.loglik_reltol_cutoff,
-      Rcpp::Named("enet_abs_tol") = api.enet_abs_tol,
-      Rcpp::Named("enet_rel_tol") = api.enet_rel_tol,
-      Rcpp::Named("enet_max_iter") = api.enet_max_iter,
+      Rcpp::Named("null_iteration_max") =
+        api.null_iteration_max,
+
+      Rcpp::Named("stagewise_iteration_max") =
+        api.stagewise_iteration_max,
+
+      Rcpp::Named("null_family_parameter_abs_tol") =
+        api.null_family_parameter_abs_tol,
+
+      Rcpp::Named("stagewise_objective_rel_tol") =
+        api.stagewise_objective_rel_tol,
+
+      Rcpp::Named("stagewise_beta_step_norm_tol") =
+        api.stagewise_beta_step_norm_tol,
+
+      Rcpp::Named("epsilon_max") =
+        api.epsilon_max,
+
+      Rcpp::Named("epsilon_start") =
+        api.epsilon_start,
+
+      Rcpp::Named("epsilon_min") =
+        api.epsilon_min,
+
+      Rcpp::Named("loglik_reltol_cutoff") =
+        api.loglik_reltol_cutoff,
+
+      Rcpp::Named("enet_abs_tol") =
+        api.enet_abs_tol,
+
+      Rcpp::Named("enet_rel_tol") =
+        api.enet_rel_tol,
+
+      Rcpp::Named("enet_max_iter") =
+        api.enet_max_iter,
+
       Rcpp::Named("state_track_strategy") =
         state_track_strategy_name(
           api.state_track_strategy
         ),
-        Rcpp::Named("state_track_freq") = api.state_track_freq,
-        Rcpp::Named("verbose") = api.verbose,
-        Rcpp::Named("include_data") = api.include_data,
-        Rcpp::Named("theta_initial") =
-          ecountgmifs::output::to_r_vector(
-            api.theta_initial
-          ),
 
-          Rcpp::Named("theta_lower_bounds") =
-            ecountgmifs::output::to_r_vector(
-              api.theta_lower_bounds
-            ),
+      Rcpp::Named("state_track_freq") =
+        api.state_track_freq,
 
-            Rcpp::Named("theta_upper_bounds") =
-              ecountgmifs::output::to_r_vector(
-                api.theta_upper_bounds
-              ),
+      Rcpp::Named("verbose") =
+        api.verbose,
 
-              Rcpp::Named("nlopt_algorithm") = api.nlopt_algorithm,
-              Rcpp::Named("nlopt_xtol_rel") = api.nlopt_xtol_rel,
-              Rcpp::Named("nlopt_ftol_rel") = api.nlopt_ftol_rel,
-              Rcpp::Named("nlopt_maxeval") = api.nlopt_maxeval
+      Rcpp::Named("include_data") =
+        api.include_data,
+
+      Rcpp::Named("theta_initial") =
+        ecountgmifs::output::to_r_vector(
+          api.theta_initial
+        ),
+
+      Rcpp::Named("theta_lower_bounds") =
+        ecountgmifs::output::to_r_vector(
+          api.theta_lower_bounds
+        ),
+
+      Rcpp::Named("theta_upper_bounds") =
+        ecountgmifs::output::to_r_vector(
+          api.theta_upper_bounds
+        ),
+
+      Rcpp::Named("nonpen_nlopt") =
+        nlopt_control_to_list(
+          api.nonpen_nlopt
+        ),
+
+      Rcpp::Named("family_nlopt") =
+        nlopt_control_to_list(
+          api.family_nlopt
+        ),
+
+      Rcpp::Named("link_nlopt") =
+        nlopt_control_to_list(
+          api.link_nlopt
+        )
+    );
+  }
+
+private:
+  static void check_nlopt_control(
+      const EcountgmifsNloptControl& nlopt_control,
+      const char* name
+  )
+  {
+    const int algorithm =
+      static_cast<int>(
+        nlopt_control.algorithm
+      );
+
+    if (
+        algorithm < 0 ||
+        algorithm >=
+          static_cast<int>(
+            NLOPT_NUM_ALGORITHMS
+          )
+    ) {
+      Rcpp::stop(
+        "%s.algorithm is not a valid NLopt algorithm",
+        name
+      );
+    }
+
+    check_nonnegative_scalar(
+      nlopt_control.xtol_rel,
+      (std::string(name) + ".xtol_rel").c_str()
+    );
+
+    check_nonnegative_scalar(
+      nlopt_control.ftol_rel,
+      (std::string(name) + ".ftol_rel").c_str()
+    );
+
+    check_positive_integer(
+      nlopt_control.maxeval,
+      (std::string(name) + ".maxeval").c_str()
+    );
+  }
+
+  static Rcpp::List nlopt_control_to_list(
+      const EcountgmifsNloptControl& nlopt_control
+  )
+  {
+    return Rcpp::List::create(
+      Rcpp::Named("algorithm") =
+        static_cast<int>(
+          nlopt_control.algorithm
+        ),
+
+      Rcpp::Named("xtol_rel") =
+        nlopt_control.xtol_rel,
+
+      Rcpp::Named("ftol_rel") =
+        nlopt_control.ftol_rel,
+
+      Rcpp::Named("maxeval") =
+        nlopt_control.maxeval
     );
   }
 };
@@ -1660,30 +1817,231 @@ public:
     best_criteria.attr("names") =
       best_criterion_names;
 
-    Rcpp::List states(
-        static_cast<R_xlen_t>(api.states.size())
-    );
+    const R_xlen_t state_count =
+      static_cast<R_xlen_t>(
+        api.states.size()
+      );
 
     Rcpp::CharacterVector state_names(
-        static_cast<R_xlen_t>(api.states.size())
+      state_count
     );
 
-    for (std::size_t i = 0; i < api.states.size(); ++i) {
+    Rcpp::NumericVector iterations(
+      state_count
+    );
+
+    Rcpp::NumericVector negloglik(
+      state_count
+    );
+
+    Rcpp::NumericVector pseudo_r2_values(
+      state_count
+    );
+
+    Rcpp::List beta(state_count);
+    Rcpp::List theta(state_count);
+    Rcpp::List family_parameters(state_count);
+    Rcpp::List link_parameters(state_count);
+    Rcpp::List xbeta(state_count);
+    Rcpp::List wtheta(state_count);
+    Rcpp::List eta(state_count);
+    Rcpp::List mu(state_count);
+    Rcpp::List active_set(state_count);
+
+    for (
+        std::size_t i = 0;
+        i < api.states.size();
+        ++i
+    ) {
+      const R_xlen_t r_index =
+        static_cast<R_xlen_t>(i);
+
       const EcountgmifsState& state =
         api.states[i];
 
-      states[static_cast<R_xlen_t>(i)] =
-        EcountgmifsStateInternal::to_list(
-          state
+      state_names[r_index] =
+        "iter_" +
+        std::to_string(state.iteration);
+
+      iterations[r_index] =
+        static_cast<double>(
+          state.iteration
         );
 
-      state_names[static_cast<R_xlen_t>(i)] =
-        "state_at_iter_" +
-        std::to_string(state.iteration);
+      negloglik[r_index] =
+        state.negloglik;
+
+      pseudo_r2_values[r_index] =
+        state.pseudo_r2;
+
+      beta[r_index] =
+        ecountgmifs::output::to_r_vector(
+          state.param.param.beta
+        );
+
+      theta[r_index] =
+        ecountgmifs::output::to_r_vector(
+          state.param.param.theta
+        );
+
+      family_parameters[r_index] =
+        ecountgmifs::output::to_r_vector(
+          state.param.param.family_parameters
+        );
+
+      link_parameters[r_index] =
+        ecountgmifs::output::to_r_vector(
+          state.param.param.link_parameters
+        );
+
+      xbeta[r_index] =
+        ecountgmifs::output::to_r_vector(
+          state.param.xbeta
+        );
+
+      wtheta[r_index] =
+        ecountgmifs::output::to_r_vector(
+          state.param.wtheta
+        );
+
+      eta[r_index] =
+        ecountgmifs::output::to_r_vector(
+          state.param.eta
+        );
+
+      mu[r_index] =
+        ecountgmifs::output::to_r_vector(
+          state.param.mu
+        );
+
+      active_set[r_index] =
+        ecountgmifs::output::to_r_logical_vector(
+          state.param.active_set
+        );
     }
 
-    states.attr("names") =
-      state_names;
+    Rcpp::List criteria(
+      criterion_count
+    );
+
+    Rcpp::CharacterVector criterion_names(
+      criterion_count
+    );
+
+    for (
+        std::size_t criterion_index = 0;
+        criterion_index < api.best_criteria.size();
+        ++criterion_index
+    ) {
+      const R_xlen_t r_criterion_index =
+        static_cast<R_xlen_t>(
+          criterion_index
+        );
+
+      Rcpp::NumericVector criterion_values(
+        state_count
+      );
+
+      for (
+          std::size_t state_index = 0;
+          state_index < api.states.size();
+          ++state_index
+      ) {
+        const EcountgmifsState& state =
+          api.states[state_index];
+
+        if (
+            state.criteria.size() !=
+              criterion_count
+        ) {
+          Rcpp::stop(
+            "saved-state criterion size mismatch"
+          );
+        }
+
+        criterion_values[
+          static_cast<R_xlen_t>(
+            state_index
+          )
+        ] =
+          state.criteria[
+            r_criterion_index
+          ];
+      }
+
+      criterion_values.attr("names") =
+        state_names;
+
+      criterion_names[
+        r_criterion_index
+      ] =
+        api.best_criteria[
+          criterion_index
+        ].name;
+
+      criteria[
+        r_criterion_index
+      ] =
+        criterion_values;
+    }
+
+    criteria.attr("names") =
+      criterion_names;
+
+    iterations.attr("names") = state_names;
+    negloglik.attr("names") = state_names;
+    pseudo_r2_values.attr("names") = state_names;
+    beta.attr("names") = state_names;
+    theta.attr("names") = state_names;
+    family_parameters.attr("names") = state_names;
+    link_parameters.attr("names") = state_names;
+    xbeta.attr("names") = state_names;
+    wtheta.attr("names") = state_names;
+    eta.attr("names") = state_names;
+    mu.attr("names") = state_names;
+    active_set.attr("names") = state_names;
+
+    Rcpp::List states =
+      Rcpp::List::create(
+        Rcpp::Named("iteration") =
+          iterations,
+
+        Rcpp::Named("negloglik") =
+          negloglik,
+
+        Rcpp::Named("criteria") =
+          criteria,
+
+        Rcpp::Named("pseudo_r2") =
+          pseudo_r2_values,
+
+        Rcpp::Named("beta") =
+          beta,
+
+        Rcpp::Named("theta") =
+          theta,
+
+        Rcpp::Named("family_parameters") =
+          family_parameters,
+
+        Rcpp::Named("link_parameters") =
+          link_parameters,
+
+        Rcpp::Named("xbeta") =
+          xbeta,
+
+        Rcpp::Named("wtheta") =
+          wtheta,
+
+        Rcpp::Named("eta") =
+          eta,
+
+        Rcpp::Named("mu") =
+          mu,
+
+        Rcpp::Named("active_set") =
+          active_set
+      );
 
     return Rcpp::List::create(
       Rcpp::Named("null_negloglik") =
@@ -1753,9 +2111,18 @@ private:
   arma::vec saturated_family_parameters_;
   double saturated_negloglik_ = arma::datum::nan;
 
-  NloptOptimizerInternal nonpen_optimizer;
-  NloptOptimizerInternal family_optimizer;
-  NloptOptimizerInternal link_optimizer;
+  arma::vec theta_before_optimize_;
+  arma::vec family_parameters_before_optimize_;
+  arma::vec link_parameters_before_optimize_;
+  arma::vec saturated_family_parameters_before_optimize_;
+
+  NloptOptimizerInternal null_nonpen_optimizer;
+  NloptOptimizerInternal null_family_optimizer;
+  NloptOptimizerInternal null_link_optimizer;
+
+  NloptOptimizerInternal stagewise_nonpen_optimizer;
+  NloptOptimizerInternal stagewise_family_optimizer;
+  NloptOptimizerInternal stagewise_link_optimizer;
 
   uint64_t nonpen_evaluation_count = 0;
   uint64_t family_evaluation_count = 0;
@@ -1780,40 +2147,92 @@ public:
     input_.family_link->family_initial_parameters()
   ),
 
-  nonpen_optimizer(
+  theta_before_optimize_(
+    state_.theta().n_elem
+  ),
+
+  family_parameters_before_optimize_(
+    state_.family_parameters().n_elem
+  ),
+
+  link_parameters_before_optimize_(
+    state_.link_parameters().n_elem
+  ),
+
+  saturated_family_parameters_before_optimize_(
+    saturated_family_parameters_.n_elem
+  ),
+
+  null_nonpen_optimizer(
     state_.theta(),
     control_.theta_lower_bounds,
     control_.theta_upper_bounds,
     &EcountgmifsStagewiseInternal::nonpen_objective,
     this,
-    control_.nlopt_algorithm,
-    control_.nlopt_xtol_rel,
-    control_.nlopt_ftol_rel,
-    control_.nlopt_maxeval
+    control_.nonpen_nlopt.algorithm,
+    control_.nonpen_nlopt.xtol_rel,
+    control_.nonpen_nlopt.ftol_rel,
+    control_.nonpen_nlopt.maxeval
   ),
 
-  family_optimizer(
+  null_family_optimizer(
     state_.family_parameters(),
     input_.family_link->family_parameter_lower_bounds(),
     input_.family_link->family_parameter_upper_bounds(),
     &EcountgmifsStagewiseInternal::family_objective,
     this,
-    control_.nlopt_algorithm,
-    control_.nlopt_xtol_rel,
-    control_.nlopt_ftol_rel,
-    control_.nlopt_maxeval
+    control_.family_nlopt.algorithm,
+    control_.family_nlopt.xtol_rel,
+    control_.family_nlopt.ftol_rel,
+    control_.family_nlopt.maxeval
   ),
 
-  link_optimizer(
+  null_link_optimizer(
     state_.link_parameters(),
     input_.family_link->link_parameter_lower_bounds(),
     input_.family_link->link_parameter_upper_bounds(),
     &EcountgmifsStagewiseInternal::link_objective,
     this,
-    control_.nlopt_algorithm,
-    control_.nlopt_xtol_rel,
-    control_.nlopt_ftol_rel,
-    control_.nlopt_maxeval
+    control_.link_nlopt.algorithm,
+    control_.link_nlopt.xtol_rel,
+    control_.link_nlopt.ftol_rel,
+    control_.link_nlopt.maxeval
+  ),
+
+  stagewise_nonpen_optimizer(
+    state_.theta(),
+    control_.theta_lower_bounds,
+    control_.theta_upper_bounds,
+    &EcountgmifsStagewiseInternal::nonpen_objective,
+    this,
+    control_.nonpen_nlopt.algorithm,
+    control_.nonpen_nlopt.xtol_rel,
+    control_.nonpen_nlopt.ftol_rel,
+    control_.nonpen_nlopt.maxeval
+  ),
+
+  stagewise_family_optimizer(
+    state_.family_parameters(),
+    input_.family_link->family_parameter_lower_bounds(),
+    input_.family_link->family_parameter_upper_bounds(),
+    &EcountgmifsStagewiseInternal::family_objective,
+    this,
+    control_.family_nlopt.algorithm,
+    control_.family_nlopt.xtol_rel,
+    control_.family_nlopt.ftol_rel,
+    control_.family_nlopt.maxeval
+  ),
+
+  stagewise_link_optimizer(
+    state_.link_parameters(),
+    input_.family_link->link_parameter_lower_bounds(),
+    input_.family_link->link_parameter_upper_bounds(),
+    &EcountgmifsStagewiseInternal::link_objective,
+    this,
+    control_.link_nlopt.algorithm,
+    control_.link_nlopt.xtol_rel,
+    control_.link_nlopt.ftol_rel,
+    control_.link_nlopt.maxeval
   )
   {
     api.beta_start.zeros(
@@ -1923,8 +2342,8 @@ private:
     ECOUNTGMIFS_VERBOSE(
       control.verbose,
       "null: start"
-      << ", max_outer=" << control.iteration_max
-      << ", family_tolerance=" << control.tol
+      << ", max_outer=" << control.null_iteration_max
+      << ", family_tolerance=" << control.null_family_parameter_abs_tol
       << ", initial_negloglik=" << state.negloglik()
     );
 
@@ -1987,13 +2406,13 @@ private:
             arma::abs(
               current -
                 previous
-            ) < control.tol
+            ) < control.null_family_parameter_abs_tol
           );
         };
 
         for (
             uint64_t outer_iteration = 0;
-            outer_iteration < control.iteration_max;
+            outer_iteration < control.null_iteration_max;
             ++outer_iteration
         ) {
           Rcpp::checkUserInterrupt();
@@ -2032,18 +2451,9 @@ private:
                           << " optimize_theta start"
           );
 
-          nonpen_optimizer.set_parameters(
-            state.theta()
-          );
-
-          nonpen_optimizer.optimize();
-
-          /*
-           * Commit only NLopt's returned optimum. Objective callbacks may
-           * temporarily evaluate other candidate values in State.
-           */
-          state.set_theta(
-            nonpen_optimizer.parameters()
+          optimize_theta_safely(
+            null_nonpen_optimizer,
+            "null"
           );
 
           ECOUNTGMIFS_VERBOSE(
@@ -2067,14 +2477,9 @@ private:
                           << " optimize_link start"
           );
 
-          link_optimizer.set_parameters(
-            state.link_parameters()
-          );
-
-          link_optimizer.optimize();
-
-          state.set_link_parameters(
-            link_optimizer.parameters()
+          optimize_link_safely(
+            null_link_optimizer,
+            "null"
           );
 
           ECOUNTGMIFS_VERBOSE(
@@ -2098,14 +2503,9 @@ private:
                           << " optimize_family start"
           );
 
-          family_optimizer.set_parameters(
-            state.family_parameters()
-          );
-
-          family_optimizer.optimize();
-
-          state.set_family_parameters(
-            family_optimizer.parameters()
+          optimize_family_safely(
+            null_family_optimizer,
+            "null"
           );
 
           const double negloglik_current =
@@ -2132,7 +2532,7 @@ private:
            *   - objective unchanged exactly;
            *   - theta unchanged exactly;
            *   - link parameters unchanged exactly;
-           *   - family parameters changed by less than control.tol.
+           *   - family parameters changed by less than control.null_family_parameter_abs_tol.
            *
            * glmSS used exact comparison for the objective and intercept, and an
            * absolute 1e-18 comparison for dispersion.
@@ -2216,7 +2616,7 @@ private:
                           << ", family_same="
                           << family_parameters_same
                           << ", family_tolerance="
-                          << control.tol
+                          << control.null_family_parameter_abs_tol
           );
 
           if (
@@ -2263,7 +2663,7 @@ private:
           control.verbose,
           "null: outer iteration limit reached"
           << ", max_outer="
-          << control.iteration_max
+          << control.null_iteration_max
           << ", negloglik="
           << state.negloglik()
         );
@@ -2302,23 +2702,14 @@ private:
         input.family_link->family_parameter_upper_bounds(),
         &EcountgmifsStagewiseInternal::saturated_family_objective,
         this,
-        static_cast<int>(NLOPT_LN_NELDERMEAD),
-        control.nlopt_xtol_rel,
-        control.nlopt_ftol_rel,
-        control.nlopt_maxeval
+        control.family_nlopt.algorithm,
+        control.family_nlopt.xtol_rel,
+        control.family_nlopt.ftol_rel,
+        control.family_nlopt.maxeval
     );
 
-    saturated_family_optimizer.optimize();
-
-    /*
-     * The optimizer owns its parameter vector. Commit its returned optimum
-     * instead of retaining the last callback candidate.
-     */
-    set_saturated_family_parameters(
-      static_cast<unsigned>(
-        saturated_family_optimizer.parameters().n_elem
-      ),
-      saturated_family_optimizer.parameters().memptr()
+    optimize_saturated_family_safely(
+      saturated_family_optimizer
     );
 
     path.store_saturated_model(
@@ -2357,7 +2748,7 @@ private:
       control.verbose,
       "stagewise: start"
       << ", max_iterations="
-      << control.iteration_max
+      << control.stagewise_iteration_max
       << ", epsilon_start="
       << api.epsilon
       << ", negloglik="
@@ -2366,7 +2757,7 @@ private:
 
     for (
         uint64_t iteration = 1;
-        iteration <= control.iteration_max;
+        iteration <= control.stagewise_iteration_max;
         ++iteration
     ) {
       Rcpp::checkUserInterrupt();
@@ -2394,28 +2785,19 @@ private:
         return;
       }
 
-      nonpen_optimizer.set_parameters(
-        state.theta()
-      );
-      nonpen_optimizer.optimize();
-      state.set_theta(
-        nonpen_optimizer.parameters()
+      optimize_theta_safely(
+        stagewise_nonpen_optimizer,
+        "stagewise"
       );
 
-      link_optimizer.set_parameters(
-        state.link_parameters()
-      );
-      link_optimizer.optimize();
-      state.set_link_parameters(
-        link_optimizer.parameters()
+      optimize_link_safely(
+        stagewise_link_optimizer,
+        "stagewise"
       );
 
-      family_optimizer.set_parameters(
-        state.family_parameters()
-      );
-      family_optimizer.optimize();
-      state.set_family_parameters(
-        family_optimizer.parameters()
+      optimize_family_safely(
+        stagewise_family_optimizer,
+        "stagewise"
       );
 
       /*
@@ -2482,12 +2864,12 @@ private:
 
       if (
           beta_step_norm <=
-            control.epsilon_min
+            control.stagewise_beta_step_norm_tol
       ) {
         finish_stagewise(
           EnumStagewiseTerminationReason::
             STAGEWISE_BETA_STALLED,
-            "The accepted beta step is not larger than epsilon_min."
+            "The accepted beta-step norm is within stagewise_beta_step_norm_tol."
         );
 
         return;
@@ -2495,7 +2877,7 @@ private:
 
       if (
           objective_relative_change <=
-            control.tol
+            control.stagewise_objective_rel_tol
       ) {
         finish_stagewise(
           EnumStagewiseTerminationReason::
@@ -2694,6 +3076,197 @@ private:
       << ", epsilon="
       << api.epsilon
     );
+  }
+
+  bool optimize_theta_safely(
+      NloptOptimizerInternal& optimizer,
+      const char* phase
+  )
+  {
+    theta_before_optimize_ =
+      state.theta();
+
+    const double negloglik_before =
+      state.negloglik();
+
+    optimizer.set_parameters(
+      theta_before_optimize_
+    );
+
+    optimizer.optimize();
+
+    state.set_theta(
+      optimizer.parameters()
+    );
+
+    if (
+        state.negloglik() <=
+          negloglik_before
+    ) {
+      return true;
+    }
+
+    const double rejected_negloglik =
+      state.negloglik();
+
+    state.set_theta(
+      theta_before_optimize_
+    );
+
+    Rcpp::warning(
+      "%s theta optimization increased negative log-likelihood "
+      "from %.17g to %.17g; previous theta was restored",
+      phase,
+      negloglik_before,
+      rejected_negloglik
+    );
+
+    return false;
+  }
+
+  bool optimize_family_safely(
+      NloptOptimizerInternal& optimizer,
+      const char* phase
+  )
+  {
+    family_parameters_before_optimize_ =
+      state.family_parameters();
+
+    const double negloglik_before =
+      state.negloglik();
+
+    optimizer.set_parameters(
+      family_parameters_before_optimize_
+    );
+
+    optimizer.optimize();
+
+    state.set_family_parameters(
+      optimizer.parameters()
+    );
+
+    if (
+        state.negloglik() <=
+          negloglik_before
+    ) {
+      return true;
+    }
+
+    const double rejected_negloglik =
+      state.negloglik();
+
+    state.set_family_parameters(
+      family_parameters_before_optimize_
+    );
+
+    Rcpp::warning(
+      "%s family-parameter optimization increased negative "
+      "log-likelihood from %.17g to %.17g; previous family "
+      "parameters were restored",
+      phase,
+      negloglik_before,
+      rejected_negloglik
+    );
+
+    return false;
+  }
+
+  bool optimize_link_safely(
+      NloptOptimizerInternal& optimizer,
+      const char* phase
+  )
+  {
+    link_parameters_before_optimize_ =
+      state.link_parameters();
+
+    const double negloglik_before =
+      state.negloglik();
+
+    optimizer.set_parameters(
+      link_parameters_before_optimize_
+    );
+
+    optimizer.optimize();
+
+    state.set_link_parameters(
+      optimizer.parameters()
+    );
+
+    if (
+        state.negloglik() <=
+          negloglik_before
+    ) {
+      return true;
+    }
+
+    const double rejected_negloglik =
+      state.negloglik();
+
+    state.set_link_parameters(
+      link_parameters_before_optimize_
+    );
+
+    Rcpp::warning(
+      "%s link-parameter optimization increased negative "
+      "log-likelihood from %.17g to %.17g; previous link "
+      "parameters were restored",
+      phase,
+      negloglik_before,
+      rejected_negloglik
+    );
+
+    return false;
+  }
+
+  bool optimize_saturated_family_safely(
+      NloptOptimizerInternal& optimizer
+  )
+  {
+    saturated_family_parameters_before_optimize_ =
+      saturated_family_parameters_;
+
+    const double negloglik_before =
+      saturated_negloglik_;
+
+    optimizer.set_parameters(
+      saturated_family_parameters_before_optimize_
+    );
+
+    optimizer.optimize();
+
+    set_saturated_family_parameters(
+      static_cast<unsigned>(
+        optimizer.parameters().n_elem
+      ),
+      optimizer.parameters().memptr()
+    );
+
+    if (
+        saturated_negloglik_ <=
+          negloglik_before
+    ) {
+      return true;
+    }
+
+    const double rejected_negloglik =
+      saturated_negloglik_;
+
+    set_saturated_family_parameters(
+      static_cast<unsigned>(
+        saturated_family_parameters_before_optimize_.n_elem
+      ),
+      saturated_family_parameters_before_optimize_.memptr()
+    );
+
+    Rcpp::warning(
+      "saturated family-parameter optimization increased negative "
+      "log-likelihood from %.17g to %.17g; previous family "
+      "parameters were restored",
+      negloglik_before,
+      rejected_negloglik
+    );
+
+    return false;
   }
 
   void set_saturated_family_parameters(
@@ -2901,8 +3474,11 @@ struct EcountgmifsContextInternal
     double epsilon_start,
     double epsilon_max,
     double epsilon_min,
-    double tol,
-    uint64_t iteration_max,
+    uint64_t null_iteration_max,
+    uint64_t stagewise_iteration_max,
+    double null_family_parameter_abs_tol,
+    double stagewise_objective_rel_tol,
+    double stagewise_beta_step_norm_tol,
 
     SEXP family,
     SEXP link_func,
@@ -2920,10 +3496,9 @@ struct EcountgmifsContextInternal
     const arma::vec& theta_lower_bounds,
     const arma::vec& theta_upper_bounds,
 
-    int nlopt_algorithm,
-    double nlopt_xtol_rel,
-    double nlopt_ftol_rel,
-    int nlopt_maxeval,
+    const EcountgmifsNloptControl& nonpen_nlopt,
+    const EcountgmifsNloptControl& family_nlopt,
+    const EcountgmifsNloptControl& link_nlopt,
     SEXP family_link
   ) :
     input(
@@ -2940,11 +3515,14 @@ struct EcountgmifsContextInternal
     ),
     control(
       input.api,
-      iteration_max,
+      null_iteration_max,
+      stagewise_iteration_max,
+      null_family_parameter_abs_tol,
+      stagewise_objective_rel_tol,
+      stagewise_beta_step_norm_tol,
       epsilon_max,
       epsilon_start,
       epsilon_min,
-      tol,
       loglik_reltol_cutoff,
       enet_abs_tol,
       enet_rel_tol,
@@ -2959,10 +3537,9 @@ struct EcountgmifsContextInternal
       theta_lower_bounds,
       theta_upper_bounds,
 
-      nlopt_algorithm,
-      nlopt_xtol_rel,
-      nlopt_ftol_rel,
-      nlopt_maxeval
+      nonpen_nlopt,
+      family_nlopt,
+      link_nlopt
     ),
     state(
       input.api,
