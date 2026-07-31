@@ -9,6 +9,7 @@
 #include <vector>
 #include <algorithm>
 #include <memory>
+#include <chrono>
 
 #include "../inst/include/ecountgmifs/api.h"
 #include "enums.h"
@@ -67,6 +68,22 @@ struct EcountgmifsDefaultFamilyLink final : public IEcountgmifsFamilyLink
   arma::uword link_parameter_count() const noexcept override
   {
     return link_func.parameter_count();
+  }
+
+  void prepare(
+      const EcountgmifsInput& input,
+      const EcountgmifsControl& control
+  ) const override
+  {
+    family.prepare(
+      input,
+      control
+    );
+
+    link_func.prepare(
+      input,
+      control
+    );
   }
 
   arma::vec family_initial_parameters() const override
@@ -235,8 +252,6 @@ public:
     weight_vec,
     weight_vec_has_prior(weight_vec),
     enet_alpha,
-
-    -1.0 * arma::lgamma(y + 1.0),
 
     family_,
     link_func_,
@@ -830,9 +845,36 @@ public:
     arma::datum::nan, // negloglik
     Rcpp::NumericVector(), // criteria
     0, // iteration
-    arma::datum::nan // pseudo_r2; snapshots only
+    arma::datum::nan, // pseudo_r2; snapshots only
+    0.0 // elapsed_time; stagewise snapshots only
   }
   {
+    /*
+     * Prepare all model modules for this fit before the first
+     * inverse-link or negative-log-likelihood evaluation.
+     *
+     * For the default family-link adapter, this prepares the
+     * separate family and link modules. For a supplied fused
+     * family-link, it prepares that module directly.
+     */
+    input.family_link->prepare(
+        input,
+        control
+    );
+
+    /*
+     * Prepare every information criterion for this fit.
+     */
+    for (
+        const IEcountgmifsCriterion* criterion :
+      input.criteria
+    ) {
+      criterion->prepare(
+          input,
+          control
+      );
+    }
+
     check_initial_bounds(
       api.param.param.family_parameters,
       input.family_link->family_parameter_lower_bounds(),
@@ -918,6 +960,19 @@ public:
   ) noexcept
   {
     api.iteration = iteration;
+  }
+
+  void set_elapsed_time(
+      double elapsed_time
+  )
+  {
+    check_nonnegative_scalar(
+      elapsed_time,
+      "elapsed_time"
+    );
+
+    api.elapsed_time =
+      elapsed_time;
   }
 
   void set_beta(
@@ -1152,7 +1207,10 @@ public:
               ),
 
               Rcpp::Named("pseudo_r2") =
-                state.pseudo_r2
+                state.pseudo_r2,
+
+                Rcpp::Named("elapsed_time") =
+                  state.elapsed_time
     );
   }
 
@@ -1266,9 +1324,18 @@ private:
 
   void update_eta()
   {
+    /*
+     * Reuse the already allocated eta buffer. Writing the three terms
+     * sequentially avoids constructing a temporary n-vector for the
+     * chained Armadillo addition on every parameter trial.
+     */
     api.param.eta =
-      input.offset +
-      api.param.xbeta +
+      input.offset;
+
+    api.param.eta +=
+      api.param.xbeta;
+
+    api.param.eta +=
       api.param.wtheta;
 
     update_mu();
@@ -1305,12 +1372,21 @@ private:
     );
   }
 
-  void update_active_set()
+  void update_active_set() noexcept
   {
-    api.param.active_set =
-      arma::conv_to<arma::uvec>::from(
-        api.param.param.beta != 0.0
-      );
+    /*
+     * Fill the persistent buffer directly. The former conv_to expression
+     * created a temporary p-vector for every accepted and rejected beta
+     * trial.
+     */
+    for (
+        arma::uword i = 0;
+        i < api.param.param.beta.n_elem;
+        ++i
+    ) {
+      api.param.active_set[i] =
+        api.param.param.beta[i] != 0.0;
+    }
   }
 };
 
@@ -1565,6 +1641,45 @@ public:
     return api;
   }
 
+  void set_null_time(
+      double elapsed_time
+  )
+  {
+    check_nonnegative_scalar(
+      elapsed_time,
+      "null_time"
+    );
+
+    api.null_time =
+      elapsed_time;
+  }
+
+  void set_saturated_time(
+      double elapsed_time
+  )
+  {
+    check_nonnegative_scalar(
+      elapsed_time,
+      "saturated_time"
+    );
+
+    api.saturated_time =
+      elapsed_time;
+  }
+
+  void set_total_time(
+      double elapsed_time
+  )
+  {
+    check_nonnegative_scalar(
+      elapsed_time,
+      "total_time"
+    );
+
+    api.total_time =
+      elapsed_time;
+  }
+
   void store_null_model()
   {
     api.null_negloglik =
@@ -1621,6 +1736,27 @@ public:
       denominator;
   }
 
+  EcountgmifsState make_snapshot(
+      const EcountgmifsState& source
+  ) const
+  {
+    EcountgmifsState snapshot =
+      source;
+
+    /*
+     * Rcpp vectors use shared SEXP ownership. Clone criteria explicitly so
+     * later calls to State::evaluate_criteria() cannot overwrite criteria
+     * stored in earlier Path or best-criterion snapshots.
+     */
+    snapshot.criteria =
+      Rcpp::clone(source.criteria);
+
+    snapshot.pseudo_r2 =
+      pseudo_r2(snapshot.negloglik);
+
+    return snapshot;
+  }
+
   void update_best_criteria()
   {
     const EcountgmifsState& current =
@@ -1661,12 +1797,7 @@ public:
         candidate;
 
       best.state =
-        current;
-
-      best.state.pseudo_r2 =
-        pseudo_r2(
-          best.state.negloglik
-        );
+        make_snapshot(current);
     }
   }
 
@@ -1720,10 +1851,7 @@ public:
     }
 
     EcountgmifsState snapshot =
-      state;
-
-    snapshot.pseudo_r2 =
-      pseudo_r2(snapshot.negloglik);
+      make_snapshot(state);
 
     if (
         !api.states.empty() &&
@@ -1838,6 +1966,10 @@ public:
       state_count
     );
 
+    Rcpp::NumericVector elapsed_time(
+      state_count
+    );
+
     Rcpp::List beta(state_count);
     Rcpp::List theta(state_count);
     Rcpp::List family_parameters(state_count);
@@ -1873,6 +2005,9 @@ public:
 
       pseudo_r2_values[r_index] =
         state.pseudo_r2;
+
+      elapsed_time[r_index] =
+        state.elapsed_time;
 
       beta[r_index] =
         ecountgmifs::output::to_r_vector(
@@ -1991,6 +2126,7 @@ public:
     iterations.attr("names") = state_names;
     negloglik.attr("names") = state_names;
     pseudo_r2_values.attr("names") = state_names;
+    elapsed_time.attr("names") = state_names;
     beta.attr("names") = state_names;
     theta.attr("names") = state_names;
     family_parameters.attr("names") = state_names;
@@ -2014,6 +2150,9 @@ public:
 
         Rcpp::Named("pseudo_r2") =
           pseudo_r2_values,
+
+        Rcpp::Named("elapsed_time") =
+          elapsed_time,
 
         Rcpp::Named("beta") =
           beta,
@@ -2069,6 +2208,15 @@ public:
                   ecountgmifs::output::to_r_vector(
                     api.saturated_family_parameters
                   ),
+
+                  Rcpp::Named("null_time") =
+                    api.null_time,
+
+                    Rcpp::Named("saturated_time") =
+                      api.saturated_time,
+
+                      Rcpp::Named("total_time") =
+                        api.total_time,
 
                   Rcpp::Named("best_criteria") =
                     best_criteria,
@@ -2294,23 +2442,64 @@ public:
 
   void fit()
   {
+    using Clock =
+      std::chrono::steady_clock;
+
+    const auto total_start =
+      Clock::now();
+
     begin_fit();
+
+    const auto null_start =
+      Clock::now();
+
     fit_null_model();
+
+    path.set_null_time(
+      elapsed_seconds(null_start)
+    );
+
+    const auto saturated_start =
+      Clock::now();
+
     fit_saturated_model();
+
+    path.set_saturated_time(
+      elapsed_seconds(saturated_start)
+    );
 
     /*
      * The current State is still the fitted null model because saturated
      * fitting uses separate Stagewise workspace. Evaluate its criteria only
      * after the completed null fit, then save it once both baselines exist.
      */
+    state.set_elapsed_time(0.0);
     state.evaluate_criteria();
     path.update_best_criteria();
     path.save_current_state(true);
 
     fit_stagewise_model();
+
+    /*
+     * Wall-clock total includes null, saturated, every stagewise iteration,
+     * criteria, state tracking, stopping checks, and other fitting overhead.
+     * Result serialization occurs after fit() and is intentionally excluded.
+     */
+    path.set_total_time(
+      elapsed_seconds(total_start)
+    );
   }
 
 private:
+  static double elapsed_seconds(
+      const std::chrono::steady_clock::time_point& start
+  ) noexcept
+  {
+    return std::chrono::duration<double>(
+      std::chrono::steady_clock::now() - start
+    ).count();
+  }
+
   void begin_fit()
   {
     if (
@@ -2402,12 +2591,22 @@ private:
             return true;
           }
 
-          return arma::all(
-            arma::abs(
-              current -
-                previous
-            ) < control.null_family_parameter_abs_tol
-          );
+          for (
+              arma::uword i = 0;
+              i < current.n_elem;
+              ++i
+          ) {
+            if (
+                std::abs(
+                  current[i] - previous[i]
+                ) >=
+                  control.null_family_parameter_abs_tol
+            ) {
+              return false;
+            }
+          }
+
+          return true;
         };
 
         for (
@@ -2760,6 +2959,9 @@ private:
         iteration <= control.stagewise_iteration_max;
         ++iteration
     ) {
+      const auto iteration_start =
+        std::chrono::steady_clock::now();
+
       Rcpp::checkUserInterrupt();
 
       const double negloglik_previous =
@@ -2809,6 +3011,11 @@ private:
       );
 
       state.evaluate_criteria();
+
+      state.set_elapsed_time(
+        elapsed_seconds(iteration_start)
+      );
+
       path.update_best_criteria();
 
       const double negloglik_current =
@@ -3083,6 +3290,9 @@ private:
       const char* phase
   )
   {
+    if (state.theta().is_empty()) {
+      return true;
+    }
     theta_before_optimize_ =
       state.theta();
 
@@ -3129,6 +3339,9 @@ private:
       const char* phase
   )
   {
+    if (state.family_parameters().is_empty()) {
+      return true;
+    }
     family_parameters_before_optimize_ =
       state.family_parameters();
 
@@ -3176,6 +3389,10 @@ private:
       const char* phase
   )
   {
+    if (state.link_parameters().is_empty()) {
+      return true;
+    }
+
     link_parameters_before_optimize_ =
       state.link_parameters();
 

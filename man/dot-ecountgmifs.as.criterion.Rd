@@ -2,49 +2,24 @@
 % Please edit documentation in R/criterion_utils.R
 \name{.ecountgmifs.as.criterion}
 \alias{.ecountgmifs.as.criterion}
-\title{Coerce one object to an ecountgmifs criterion}
+\title{Coerce one object to a criterion external pointer}
 \usage{
-.ecountgmifs.as.criterion(x, name = NULL, envir = parent.frame())
+.ecountgmifs.as.criterion(criterion, name = NULL, envir = parent.frame())
 }
 \arguments{
-\item{x}{criterion object, function, or character string. Object to coerce.}
+\item{criterion}{Criterion specification.}
 
-\item{name}{character or \code{NULL}. Optional output name to assign to the
-criterion.}
+\item{name}{Optional list name used for output naming.}
 
-\item{envir}{environment. Environment in which character criterion names are
-resolved.}
+\item{envir}{Environment used to resolve character function names.}
 }
 \value{
-An object of class \code{"ecountgmifs.criterion"}.
+An external pointer.
 }
 \description{
-Internal helper used by \code{\link[=ecountgmifs]{ecountgmifs()}} to coerce a user-supplied
-model-selection criterion into an object of class
-\code{"ecountgmifs.criterion"}.
-
-Accepted inputs are:
-\describe{
-\item{compiled criterion object}{
-An object of class \code{"ecountgmifs.criterion"}, usually returned by
-\code{\link[=ecountgmifs.compile.criterion]{ecountgmifs.compile.criterion()}} or one of the example criterion
-constructors such as \code{\link[=BIC_nnz]{BIC_nnz()}}.
-}
-\item{criterion constructor function}{
-A zero-argument function returning an object of class
-\code{"ecountgmifs.criterion"}, such as \link{BIC_nnz}.
-}
-\item{criterion constructor name}{
-A single character string naming a criterion constructor function, such
-as \code{"BIC_nnz"}. The function is searched first in \code{envir} and
-then in the \pkg{ecountgmifs} namespace.
-}
-}
-
-If \code{name} is supplied, it overrides the criterion object's internal
-\code{name} field. This is how named elements of the \code{criteria} list in
-\code{\link[=ecountgmifs]{ecountgmifs()}} become output names. If \code{name} is not supplied, the
-criterion object's own \code{name} field is preserved. If that field is empty,
-the compiled symbol name is used instead.
+Internal helper used by \code{\link[=ecountgmifs]{ecountgmifs()}} to resolve a supplied criterion.
+Accepted inputs are an external pointer, a zero-argument constructor, a
+character name resolving to such a constructor, or a compatible wrapper
+object containing an external pointer.
 }
 \keyword{internal}

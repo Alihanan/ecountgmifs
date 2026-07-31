@@ -33,3 +33,23 @@ example_create_bic_criterion <- function() {
     .Call(`_ecountgmifs_example_create_bic_criterion`)
 }
 
+example_create_information_criterion <- function(name, penalty_type, df_type, gamma = 0.5) {
+    .Call(`_ecountgmifs_example_create_information_criterion`, name, penalty_type, df_type, gamma)
+}
+
+create_r_link <- function(name, inverse, grad, initial_parameters, lower_bounds, upper_bounds, environment) {
+    .Call(`_ecountgmifs_create_r_link`, name, inverse, grad, initial_parameters, lower_bounds, upper_bounds, environment)
+}
+
+create_r_family <- function(name, negloglik, grad, initial_parameters, lower_bounds, upper_bounds, environment) {
+    .Call(`_ecountgmifs_create_r_family`, name, negloglik, grad, initial_parameters, lower_bounds, upper_bounds, environment)
+}
+
+create_r_family_link <- function(family_name, link_name, inverse, negloglik, grad, family_initial_parameters, family_lower_bounds, family_upper_bounds, link_initial_parameters, link_lower_bounds, link_upper_bounds, environment) {
+    .Call(`_ecountgmifs_create_r_family_link`, family_name, link_name, inverse, negloglik, grad, family_initial_parameters, family_lower_bounds, family_upper_bounds, link_initial_parameters, link_lower_bounds, link_upper_bounds, environment)
+}
+
+create_r_criterion <- function(name, evaluate, environment) {
+    .Call(`_ecountgmifs_create_r_criterion`, name, evaluate, environment)
+}
+

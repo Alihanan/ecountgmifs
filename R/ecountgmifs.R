@@ -1,3 +1,46 @@
+.ecountgmifs.resolve.plugin <- function(plugin, type, envir = parent.frame()) {
+  value <- plugin
+
+  if (is.character(value) && length(value) == 1L) {
+    value <- get(value, envir = envir, mode = "function", inherits = TRUE)
+  }
+
+  if (is.function(value)) {
+    value <- value()
+  }
+
+  if (!identical(typeof(value), "externalptr")) {
+    stop(
+      "`", type, "` must be an external pointer or a zero-argument ",
+      "constructor returning one.",
+      call. = FALSE
+    )
+  }
+
+  declared.type <- attr(value, "plugin.type", exact = TRUE)
+  if (is.null(declared.type)) {
+    declared.type <- attr(value, "r.plugin.type", exact = TRUE)
+  }
+  if (!is.null(declared.type) && !identical(declared.type, type)) {
+    stop(
+      "`", type, "` received a plugin declared as `", declared.type, "`.",
+      call. = FALSE
+    )
+  }
+
+  validator <- switch(
+    type,
+    link = inspect_link_plugin,
+    family = inspect_family_plugin,
+    family.link = inspect_family_link_plugin,
+    criterion = inspect_criterion_plugin,
+    stop("Unknown plugin type.", call. = FALSE)
+  )
+  validator(value)
+
+  value
+}
+
 #' Fit an extended count GMIFS model
 #'
 #' Fits an extended generalized monotone incremental forward-stagewise model
@@ -10,18 +53,23 @@
 #' @param offset Numeric offset vector or `NULL`.
 #' @param weight.vec Positive elastic-net prior weights or `NULL`.
 #' @param enet.alpha Elastic-net mixing parameter in `[0, 1]`.
-#' @param family Either `"negative.binomial"` or `"poisson"`.
+#' @param family Either `"negative.binomial"`, `"poisson"`, a family external
+#'   pointer, a zero-argument constructor returning one, or its character name.
 #' @param savefolder Retained for compatibility; currently unused.
-#' @param link Either `"log"` or `"softplus"`.
-#' @param criteria A criterion external pointer, a list of criterion external
-#'   pointers, `NULL` for the example AIC/BIC/SABIC set, or an empty list to
-#'   disable criteria.
+#' @param link Either `"log"`, `"softplus"`, a link external pointer, a
+#'   zero-argument constructor returning one, or its character name.
+#' @param criteria A criterion pointer, constructor, character constructor name,
+#'   list of such specifications, `NULL` for the built-in AIC/BIC/SABIC set, or
+#'   an empty list to disable criteria.
 #' @param verbose Logical. Print fitting progress.
 #' @param fixed.dispersion Logical. Fixed NB2 dispersion is not yet supported by
 #'   the current plugin interface.
 #' @param fixed.dispersion.value Retained for compatibility.
 #' @param include.data Logical. Include input data in the result.
 #' @param control An object returned by [ecountgmifs.control()].
+#' @param family.link Optional fused family-link pointer, zero-argument
+#'   constructor, or its character name. When supplied, it takes precedence over
+#'   `family` and `link`.
 #'
 #' @return An object of class `"ecountgmifs"`.
 #' @export
@@ -41,7 +89,8 @@ ecountgmifs <- function(
     fixed.dispersion = FALSE,
     fixed.dispersion.value = 0,
     include.data = FALSE,
-    control = ecountgmifs.control()
+    control = ecountgmifs.control(),
+    family.link = NULL
 ) {
   X <- as.matrix(X)
   y <- as.numeric(y)
@@ -134,10 +183,29 @@ ecountgmifs <- function(
   weight.vec <-
     weight.vec * ncol(X) / sum(weight.vec)
 
-  family <- match.arg(family)
-  link <- match.arg(link)
+  builtin.family <- NULL
+  builtin.link <- NULL
 
-  if (isTRUE(fixed.dispersion) && family == "negative.binomial") {
+  family.choices <- c("negative.binomial", "poisson")
+  link.choices <- c("log", "softplus")
+
+  if (
+      is.character(family) &&
+      (length(family) > 1L || family %in% family.choices)
+  ) {
+    builtin.family <- match.arg(family, family.choices)
+  }
+  if (
+      is.character(link) &&
+      (length(link) > 1L || link %in% link.choices)
+  ) {
+    builtin.link <- match.arg(link, link.choices)
+  }
+
+  if (
+      isTRUE(fixed.dispersion) &&
+      identical(builtin.family, "negative.binomial")
+  ) {
     stop(
       "fixed NB2 dispersion is not supported by the current family plugin interface",
       call. = FALSE
@@ -148,40 +216,49 @@ ecountgmifs <- function(
   link.pointer <- NULL
   family.link.pointer <- NULL
 
-  if (family == "negative.binomial" && link == "log") {
-    family.link.pointer <-
-      example_create_nb2_log_family_link()
+  if (!is.null(family.link)) {
+    family.link.pointer <- .ecountgmifs.resolve.plugin(
+      family.link,
+      "family.link",
+      envir = parent.frame()
+    )
+  } else if (
+      identical(builtin.family, "negative.binomial") &&
+      identical(builtin.link, "log")
+  ) {
+    family.link.pointer <- example_create_nb2_log_family_link()
   } else {
-    family.pointer <- switch(
-      family,
-      "negative.binomial" = example_create_nb2_family(),
-      "poisson" = example_create_poisson_family()
-    )
+    family.pointer <- if (!is.null(builtin.family)) {
+      switch(
+        builtin.family,
+        "negative.binomial" = example_create_nb2_family(),
+        "poisson" = example_create_poisson_family()
+      )
+    } else {
+      .ecountgmifs.resolve.plugin(family, "family", envir = parent.frame())
+    }
 
-    link.pointer <- switch(
-      link,
-      "log" = example_create_log_link(),
-      "softplus" = example_create_softplus_link()
-    )
+    link.pointer <- if (!is.null(builtin.link)) {
+      switch(
+        builtin.link,
+        "log" = example_create_log_link(),
+        "softplus" = example_create_softplus_link()
+      )
+    } else {
+      .ecountgmifs.resolve.plugin(link, "link", envir = parent.frame())
+    }
   }
 
   if (is.null(criteria)) {
     criteria <- list(
-      AIC = example_create_aic_criterion(),
-      BIC = example_create_bic_criterion(),
-      SABIC = example_create_sabic_criterion()
+      AIC = plugin.criterion.AIC.builtin(),
+      BIC = plugin.criterion.BIC.builtin(),
+      SABIC = plugin.criterion.SABIC.builtin()
     )
-  } else if (typeof(criteria) == "externalptr") {
-    criteria <- list(criteria)
-  }
-
-  if (
-    !is.list(criteria) ||
-    !all(vapply(criteria, typeof, character(1L)) == "externalptr")
-  ) {
-    stop(
-      "value of 'criteria' must be an external pointer or a list of external pointers",
-      call. = FALSE
+  } else {
+    criteria <- .ecountgmifs.normalize.criteria(
+      criteria,
+      envir = parent.frame()
     )
   }
 

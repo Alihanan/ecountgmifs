@@ -162,6 +162,89 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// example_create_information_criterion
+SEXP example_create_information_criterion(const std::string& name, const int penalty_type, const int df_type, const double gamma);
+RcppExport SEXP _ecountgmifs_example_create_information_criterion(SEXP nameSEXP, SEXP penalty_typeSEXP, SEXP df_typeSEXP, SEXP gammaSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< const std::string& >::type name(nameSEXP);
+    Rcpp::traits::input_parameter< const int >::type penalty_type(penalty_typeSEXP);
+    Rcpp::traits::input_parameter< const int >::type df_type(df_typeSEXP);
+    Rcpp::traits::input_parameter< const double >::type gamma(gammaSEXP);
+    rcpp_result_gen = Rcpp::wrap(example_create_information_criterion(name, penalty_type, df_type, gamma));
+    return rcpp_result_gen;
+END_RCPP
+}
+// create_r_link
+SEXP create_r_link(const std::string& name, Rcpp::Function inverse, Rcpp::Function grad, arma::vec initial_parameters, arma::vec lower_bounds, arma::vec upper_bounds, Rcpp::Environment environment);
+RcppExport SEXP _ecountgmifs_create_r_link(SEXP nameSEXP, SEXP inverseSEXP, SEXP gradSEXP, SEXP initial_parametersSEXP, SEXP lower_boundsSEXP, SEXP upper_boundsSEXP, SEXP environmentSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< const std::string& >::type name(nameSEXP);
+    Rcpp::traits::input_parameter< Rcpp::Function >::type inverse(inverseSEXP);
+    Rcpp::traits::input_parameter< Rcpp::Function >::type grad(gradSEXP);
+    Rcpp::traits::input_parameter< arma::vec >::type initial_parameters(initial_parametersSEXP);
+    Rcpp::traits::input_parameter< arma::vec >::type lower_bounds(lower_boundsSEXP);
+    Rcpp::traits::input_parameter< arma::vec >::type upper_bounds(upper_boundsSEXP);
+    Rcpp::traits::input_parameter< Rcpp::Environment >::type environment(environmentSEXP);
+    rcpp_result_gen = Rcpp::wrap(create_r_link(name, inverse, grad, initial_parameters, lower_bounds, upper_bounds, environment));
+    return rcpp_result_gen;
+END_RCPP
+}
+// create_r_family
+SEXP create_r_family(const std::string& name, Rcpp::Function negloglik, Rcpp::Function grad, arma::vec initial_parameters, arma::vec lower_bounds, arma::vec upper_bounds, Rcpp::Environment environment);
+RcppExport SEXP _ecountgmifs_create_r_family(SEXP nameSEXP, SEXP negloglikSEXP, SEXP gradSEXP, SEXP initial_parametersSEXP, SEXP lower_boundsSEXP, SEXP upper_boundsSEXP, SEXP environmentSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< const std::string& >::type name(nameSEXP);
+    Rcpp::traits::input_parameter< Rcpp::Function >::type negloglik(negloglikSEXP);
+    Rcpp::traits::input_parameter< Rcpp::Function >::type grad(gradSEXP);
+    Rcpp::traits::input_parameter< arma::vec >::type initial_parameters(initial_parametersSEXP);
+    Rcpp::traits::input_parameter< arma::vec >::type lower_bounds(lower_boundsSEXP);
+    Rcpp::traits::input_parameter< arma::vec >::type upper_bounds(upper_boundsSEXP);
+    Rcpp::traits::input_parameter< Rcpp::Environment >::type environment(environmentSEXP);
+    rcpp_result_gen = Rcpp::wrap(create_r_family(name, negloglik, grad, initial_parameters, lower_bounds, upper_bounds, environment));
+    return rcpp_result_gen;
+END_RCPP
+}
+// create_r_family_link
+SEXP create_r_family_link(const std::string& family_name, const std::string& link_name, Rcpp::Function inverse, Rcpp::Function negloglik, Rcpp::Function grad, arma::vec family_initial_parameters, arma::vec family_lower_bounds, arma::vec family_upper_bounds, arma::vec link_initial_parameters, arma::vec link_lower_bounds, arma::vec link_upper_bounds, Rcpp::Environment environment);
+RcppExport SEXP _ecountgmifs_create_r_family_link(SEXP family_nameSEXP, SEXP link_nameSEXP, SEXP inverseSEXP, SEXP negloglikSEXP, SEXP gradSEXP, SEXP family_initial_parametersSEXP, SEXP family_lower_boundsSEXP, SEXP family_upper_boundsSEXP, SEXP link_initial_parametersSEXP, SEXP link_lower_boundsSEXP, SEXP link_upper_boundsSEXP, SEXP environmentSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< const std::string& >::type family_name(family_nameSEXP);
+    Rcpp::traits::input_parameter< const std::string& >::type link_name(link_nameSEXP);
+    Rcpp::traits::input_parameter< Rcpp::Function >::type inverse(inverseSEXP);
+    Rcpp::traits::input_parameter< Rcpp::Function >::type negloglik(negloglikSEXP);
+    Rcpp::traits::input_parameter< Rcpp::Function >::type grad(gradSEXP);
+    Rcpp::traits::input_parameter< arma::vec >::type family_initial_parameters(family_initial_parametersSEXP);
+    Rcpp::traits::input_parameter< arma::vec >::type family_lower_bounds(family_lower_boundsSEXP);
+    Rcpp::traits::input_parameter< arma::vec >::type family_upper_bounds(family_upper_boundsSEXP);
+    Rcpp::traits::input_parameter< arma::vec >::type link_initial_parameters(link_initial_parametersSEXP);
+    Rcpp::traits::input_parameter< arma::vec >::type link_lower_bounds(link_lower_boundsSEXP);
+    Rcpp::traits::input_parameter< arma::vec >::type link_upper_bounds(link_upper_boundsSEXP);
+    Rcpp::traits::input_parameter< Rcpp::Environment >::type environment(environmentSEXP);
+    rcpp_result_gen = Rcpp::wrap(create_r_family_link(family_name, link_name, inverse, negloglik, grad, family_initial_parameters, family_lower_bounds, family_upper_bounds, link_initial_parameters, link_lower_bounds, link_upper_bounds, environment));
+    return rcpp_result_gen;
+END_RCPP
+}
+// create_r_criterion
+SEXP create_r_criterion(const std::string& name, Rcpp::Function evaluate, Rcpp::Environment environment);
+RcppExport SEXP _ecountgmifs_create_r_criterion(SEXP nameSEXP, SEXP evaluateSEXP, SEXP environmentSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< const std::string& >::type name(nameSEXP);
+    Rcpp::traits::input_parameter< Rcpp::Function >::type evaluate(evaluateSEXP);
+    Rcpp::traits::input_parameter< Rcpp::Environment >::type environment(environmentSEXP);
+    rcpp_result_gen = Rcpp::wrap(create_r_criterion(name, evaluate, environment));
+    return rcpp_result_gen;
+END_RCPP
+}
 
 static const R_CallMethodDef CallEntries[] = {
     {"_ecountgmifs_ecountgmifs_cpp", (DL_FUNC) &_ecountgmifs_ecountgmifs_cpp, 57},
@@ -172,6 +255,11 @@ static const R_CallMethodDef CallEntries[] = {
     {"_ecountgmifs_example_create_nb2_log_family_link", (DL_FUNC) &_ecountgmifs_example_create_nb2_log_family_link, 6},
     {"_ecountgmifs_example_create_aic_criterion", (DL_FUNC) &_ecountgmifs_example_create_aic_criterion, 0},
     {"_ecountgmifs_example_create_bic_criterion", (DL_FUNC) &_ecountgmifs_example_create_bic_criterion, 0},
+    {"_ecountgmifs_example_create_information_criterion", (DL_FUNC) &_ecountgmifs_example_create_information_criterion, 4},
+    {"_ecountgmifs_create_r_link", (DL_FUNC) &_ecountgmifs_create_r_link, 7},
+    {"_ecountgmifs_create_r_family", (DL_FUNC) &_ecountgmifs_create_r_family, 7},
+    {"_ecountgmifs_create_r_family_link", (DL_FUNC) &_ecountgmifs_create_r_family_link, 12},
+    {"_ecountgmifs_create_r_criterion", (DL_FUNC) &_ecountgmifs_create_r_criterion, 3},
     {NULL, NULL, 0}
 };
 

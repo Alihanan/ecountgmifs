@@ -38,7 +38,8 @@ enum EnumStagewiseTerminationReason
 };
 
 struct IEcountgmifsCriterion;
-
+struct EcountgmifsInput;
+struct EcountgmifsControl;
 
 struct IEcountgmifsLinkFunc
 {
@@ -47,6 +48,11 @@ struct IEcountgmifsLinkFunc
   virtual std::string name() const = 0;
 
   virtual arma::uword parameter_count() const noexcept = 0;
+
+  virtual void prepare(
+      const EcountgmifsInput& input,
+      const EcountgmifsControl& control
+  ) const = 0;
 
   virtual void inverse(
       const arma::vec& eta,
@@ -87,6 +93,11 @@ struct IEcountgmifsFamily
   virtual std::string name() const = 0;
 
   virtual arma::uword parameter_count() const noexcept = 0;
+
+  virtual void prepare(
+      const EcountgmifsInput& input,
+      const EcountgmifsControl& control
+  ) const = 0;
 
   virtual void negloglik(
       const arma::vec& y,
@@ -187,6 +198,11 @@ struct IEcountgmifsFamilyLink
     return upper;
   }
 
+  virtual void prepare(
+      const EcountgmifsInput& input,
+      const EcountgmifsControl& control
+  ) const = 0;
+
   virtual void inverse(
       const arma::vec& eta,
       const arma::vec& link_parameters,
@@ -239,8 +255,6 @@ struct EcountgmifsInput {
   const arma::vec& weight_vec;
   bool has_prior;
   double enet_alpha;
-
-  const arma::vec train_y_one_lgamma;
 
   /*
    * family_link is always non-null internally.
@@ -396,6 +410,13 @@ struct EcountgmifsState
    * The live mutable State does not own the null/saturated baselines.
    */
   double pseudo_r2 = arma::datum::nan;
+
+  /*
+   * Wall-clock time spent completing this stagewise iteration, in seconds.
+   * The null-model snapshot at iteration 0 keeps this value at zero because
+   * null-model timing is stored once at Path level.
+   */
+  double elapsed_time = 0.0;
 };
 
 struct EcountgmifsBestCriterion
@@ -427,6 +448,11 @@ struct EcountgmifsPath
   double saturated_negloglik = arma::datum::nan;
   arma::vec saturated_family_parameters;
 
+  /* Wall-clock fitting times, in seconds. */
+  double null_time = 0.0;
+  double saturated_time = 0.0;
+  double total_time = 0.0;
+
   std::vector<EcountgmifsBestCriterion>
     best_criteria;
 
@@ -454,6 +480,11 @@ struct IEcountgmifsCriterion
   virtual ~IEcountgmifsCriterion() = default;
 
   virtual std::string name() const = 0;
+
+  virtual void prepare(
+      const EcountgmifsInput& input,
+      const EcountgmifsControl& control
+  ) const = 0;
 
   virtual double evaluate(
       const EcountgmifsInput& input,

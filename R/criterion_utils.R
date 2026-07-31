@@ -1,181 +1,161 @@
-#' Coerce one object to an ecountgmifs criterion
+.is.criterion.pointer <- function(x) {
+  identical(typeof(x), "externalptr")
+}
+
+.extract.criterion.pointer <- function(x) {
+  if (.is.criterion.pointer(x)) {
+    return(x)
+  }
+
+  if (inherits(x, "ecountgmifs.criterion")) {
+    candidates <- c("pointer", "ptr", "external.pointer")
+
+    for (name in candidates) {
+      if (!is.null(x[[name]]) && .is.criterion.pointer(x[[name]])) {
+        return(x[[name]])
+      }
+    }
+  }
+
+  NULL
+}
+
+#' Coerce one object to a criterion external pointer
 #'
 #' @description
-#' Internal helper used by [ecountgmifs()] to coerce a user-supplied
-#' model-selection criterion into an object of class
-#' \code{"ecountgmifs.criterion"}.
+#' Internal helper used by [ecountgmifs()] to resolve a supplied criterion.
+#' Accepted inputs are an external pointer, a zero-argument constructor, a
+#' character name resolving to such a constructor, or a compatible wrapper
+#' object containing an external pointer.
 #'
-#' Accepted inputs are:
-#' \describe{
-#'   \item{compiled criterion object}{
-#'     An object of class \code{"ecountgmifs.criterion"}, usually returned by
-#'     [ecountgmifs.compile.criterion()] or one of the example criterion
-#'     constructors such as [BIC_nnz()].
-#'   }
-#'   \item{criterion constructor function}{
-#'     A zero-argument function returning an object of class
-#'     \code{"ecountgmifs.criterion"}, such as [BIC_nnz].
-#'   }
-#'   \item{criterion constructor name}{
-#'     A single character string naming a criterion constructor function, such
-#'     as \code{"BIC_nnz"}. The function is searched first in \code{envir} and
-#'     then in the \pkg{ecountgmifs} namespace.
-#'   }
-#' }
+#' @param criterion Criterion specification.
+#' @param name Optional list name used for output naming.
+#' @param envir Environment used to resolve character function names.
 #'
-#' If \code{name} is supplied, it overrides the criterion object's internal
-#' \code{name} field. This is how named elements of the \code{criteria} list in
-#' [ecountgmifs()] become output names. If \code{name} is not supplied, the
-#' criterion object's own \code{name} field is preserved. If that field is empty,
-#' the compiled symbol name is used instead.
-#'
-#' @param x criterion object, function, or character string. Object to coerce.
-#' @param name character or \code{NULL}. Optional output name to assign to the
-#'   criterion.
-#' @param envir environment. Environment in which character criterion names are
-#'   resolved.
-#'
-#' @return An object of class \code{"ecountgmifs.criterion"}.
-#'
+#' @return An external pointer.
 #' @keywords internal
-.ecountgmifs.as.criterion <- function(x, name = NULL, envir = parent.frame()) {
-  if (inherits(x, "ecountgmifs.criterion")) {
-    out <- x
+.ecountgmifs.as.criterion <- function(
+    criterion,
+    name = NULL,
+    envir = parent.frame()
+) {
+  value <- criterion
 
-  } else if (is.function(x)) {
-    out <- x()
+  if (is.character(value) && length(value) == 1L) {
+    value <- get(value, envir = envir, mode = "function", inherits = TRUE)
+  }
 
-    if (!inherits(out, "ecountgmifs.criterion")) {
-      stop(
-        "criterion function did not return an object of class 'ecountgmifs.criterion'",
-        call. = FALSE
-      )
-    }
+  if (is.function(value)) {
+    value <- value()
+  }
 
-  } else if (is.character(x) && length(x) == 1L && !is.na(x)) {
-    fun.name <- x
+  pointer <- .extract.criterion.pointer(value)
 
-    if (exists(fun.name, envir = envir, mode = "function", inherits = TRUE)) {
-      fun <- get(fun.name, envir = envir, mode = "function", inherits = TRUE)
-    } else if (exists(fun.name,
-                      envir = asNamespace("ecountgmifs"),
-                      mode = "function",
-                      inherits = FALSE)) {
-      fun <- get(fun.name,
-                 envir = asNamespace("ecountgmifs"),
-                 mode = "function",
-                 inherits = FALSE)
-    } else {
-      stop(
-        "could not find criterion function named '", fun.name, "'",
-        call. = FALSE
-      )
-    }
-
-    out <- fun()
-
-    if (!inherits(out, "ecountgmifs.criterion")) {
-      stop(
-        "criterion function named '", fun.name,
-        "' did not return an object of class 'ecountgmifs.criterion'",
-        call. = FALSE
-      )
-    }
-
-  } else {
+  if (is.null(pointer)) {
     stop(
-      "each criterion must be an 'ecountgmifs.criterion' object, ",
-      "a function returning one, or a character string naming such a function",
+      "Each criterion must be an external pointer, a constructor returning ",
+      "one, a character constructor name, or a compatible criterion wrapper.",
       call. = FALSE
     )
   }
 
+  tryCatch(
+    inspect_criterion_plugin(pointer),
+    error = function(error) {
+      stop(
+        "Invalid criterion external pointer: ",
+        conditionMessage(error),
+        call. = FALSE
+      )
+    }
+  )
+
   if (!is.null(name) && nzchar(name)) {
-    out$name <- name
-  } else if (is.null(out$name) || !nzchar(out$name)) {
-    out$name <- out$symbol
+    attr(pointer, "criterion.list.name") <- name
   }
 
-  out
+  pointer
 }
-
 
 #' Normalize model-selection criteria
 #'
 #' @description
-#' Internal helper used by [ecountgmifs()] to normalize the \code{criteria}
-#' argument into a named list of compiled criterion objects.
+#' Internal helper that resolves criterion constructors and character names to
+#' a list of external pointers accepted by the C++ input layer.
 #'
-#' The user may supply:
-#' \enumerate{
-#'   \item a single object of class \code{"ecountgmifs.criterion"};
-#'   \item a zero-argument function returning such an object;
-#'   \item a single character string naming such a function; or
-#'   \item a list containing any mixture of the above.
-#' }
+#' @param criteria Criterion pointer, function, character name, list, or `NULL`.
+#' @param envir Environment used to resolve character names.
 #'
-#' Character entries are resolved to functions and called. This allows both
-#' package-provided criterion constructors, such as \code{"BIC_nnz"}, and
-#' user-defined criterion constructors to be passed by name.
-#'
-#' If \code{criteria} is a named list, the list names override the internal
-#' criterion names stored in the compiled criterion objects. If list elements
-#' are unnamed, the \code{name} field returned by
-#' [ecountgmifs.compile.criterion()] is used.
-#'
-#' @param criteria criterion object, function, character string, list, or
-#'   \code{NULL}. User-supplied model-selection criteria.
-#' @param envir environment. Environment in which character criterion names are
-#'   resolved.
-#'
-#' @return A named list of objects of class \code{"ecountgmifs.criterion"}.
-#'
+#' @return A list of criterion external pointers.
 #' @keywords internal
-.ecountgmifs.normalize.criteria <- function(criteria, envir = parent.frame()) {
+.ecountgmifs.normalize.criteria <- function(
+    criteria,
+    envir = parent.frame()
+) {
   if (missing(criteria) || is.null(criteria)) {
     return(list())
   }
 
-  if (inherits(criteria, "ecountgmifs.criterion") ||
+  if (
+      .is.criterion.pointer(criteria) ||
+      inherits(criteria, "ecountgmifs.criterion") ||
       is.function(criteria) ||
-      (is.character(criteria) && length(criteria) == 1L)) {
+      (is.character(criteria) && length(criteria) == 1L)
+  ) {
     criteria <- list(criteria)
   }
 
   if (!is.list(criteria)) {
     stop(
-      "value of 'criteria' must be a criterion object, a criterion function, ",
-      "a character criterion-function name, or a list containing these",
+      "`criteria` must be a criterion, constructor, character name, or list.",
       call. = FALSE
     )
   }
 
-  criteria.names <- names(criteria)
-
-  out <- vector("list", length(criteria))
+  input.names <- names(criteria)
+  output <- vector("list", length(criteria))
+  output.names <- character(length(criteria))
 
   for (i in seq_along(criteria)) {
     user.name <- NULL
 
-    if (!is.null(criteria.names) &&
-        length(criteria.names) == length(criteria) &&
-        !is.na(criteria.names[[i]]) &&
-        nzchar(criteria.names[[i]])) {
-      user.name <- criteria.names[[i]]
+    if (
+        !is.null(input.names) &&
+        length(input.names) == length(criteria) &&
+        !is.na(input.names[[i]]) &&
+        nzchar(input.names[[i]])
+    ) {
+      user.name <- input.names[[i]]
     }
 
-    out[[i]] <- .ecountgmifs.as.criterion(
+    output[[i]] <- .ecountgmifs.as.criterion(
       criteria[[i]],
       name = user.name,
       envir = envir
     )
+
+    output.names[[i]] <- if (!is.null(user.name)) {
+      user.name
+    } else {
+      plugin.name <- attr(output[[i]], "r.plugin.name", exact = TRUE)
+
+      if (!is.character(plugin.name) || length(plugin.name) != 1L) {
+        plugin.name <- attr(output[[i]], "plugin.name", exact = TRUE)
+      }
+
+      if (!is.character(plugin.name) || length(plugin.name) != 1L) {
+        plugin.name <- attr(output[[i]], "criterion.name", exact = TRUE)
+      }
+
+      if (is.character(plugin.name) && length(plugin.name) == 1L &&
+          nzchar(plugin.name)) {
+        plugin.name
+      } else {
+        paste0("criterion_", i)
+      }
+    }
   }
 
-  names(out) <- vapply(
-    out,
-    function(x) x$name,
-    character(1L)
-  )
-
-  out
+  names(output) <- output.names
+  output
 }

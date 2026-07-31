@@ -7,34 +7,15 @@
 .ecountgmifs.normalize.criteria(criteria, envir = parent.frame())
 }
 \arguments{
-\item{criteria}{criterion object, function, character string, list, or
-\code{NULL}. User-supplied model-selection criteria.}
+\item{criteria}{Criterion pointer, function, character name, list, or \code{NULL}.}
 
-\item{envir}{environment. Environment in which character criterion names are
-resolved.}
+\item{envir}{Environment used to resolve character names.}
 }
 \value{
-A named list of objects of class \code{"ecountgmifs.criterion"}.
+A list of criterion external pointers.
 }
 \description{
-Internal helper used by \code{\link[=ecountgmifs]{ecountgmifs()}} to normalize the \code{criteria}
-argument into a named list of compiled criterion objects.
-
-The user may supply:
-\enumerate{
-\item a single object of class \code{"ecountgmifs.criterion"};
-\item a zero-argument function returning such an object;
-\item a single character string naming such a function; or
-\item a list containing any mixture of the above.
-}
-
-Character entries are resolved to functions and called. This allows both
-package-provided criterion constructors, such as \code{"BIC_nnz"}, and
-user-defined criterion constructors to be passed by name.
-
-If \code{criteria} is a named list, the list names override the internal
-criterion names stored in the compiled criterion objects. If list elements
-are unnamed, the \code{name} field returned by
-\code{\link[=ecountgmifs.compile.criterion]{ecountgmifs.compile.criterion()}} is used.
+Internal helper that resolves criterion constructors and character names to
+a list of external pointers accepted by the C++ input layer.
 }
 \keyword{internal}
