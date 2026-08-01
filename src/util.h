@@ -66,11 +66,11 @@ inline void check_positive_integer(
 )
 {
   static_assert(
-    std::is_integral_v<Integer>,
+    std::is_integral<Integer>::value,
     "check_positive_integer requires an integer type"
   );
 
-  if constexpr (std::is_signed_v<Integer>) {
+  if constexpr (std::is_signed<Integer>::value) {
     if (value <= 0) {
       Rcpp::stop(
         "value of '%s' must be positive",

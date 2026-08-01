@@ -20,10 +20,12 @@ inline double clamp_mu(
     const double mu_max_cap
 )
 {
-  return std::clamp(
-    mu,
+  return std::max(
     mu_min_cap,
-    mu_max_cap
+    std::min(
+      mu,
+      mu_max_cap
+    )
   );
 }
 
@@ -722,6 +724,7 @@ public:
       arma::vec& d_negloglik_d_link_parameters
   ) const override
   {
+    /*
     family_.grad(
       y,
       mu,
@@ -736,6 +739,7 @@ public:
       d_mu_d_eta,
       d_mu_d_link_parameters
     );
+    */
 
     const double dispersion =
       family_parameters[0];

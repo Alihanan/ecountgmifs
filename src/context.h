@@ -10,6 +10,7 @@
 #include <algorithm>
 #include <memory>
 #include <chrono>
+#include <unordered_map>
 
 #include "../inst/include/ecountgmifs/api.h"
 #include "enums.h"
@@ -43,8 +44,8 @@ struct EcountgmifsDefaultFamilyLink final : public IEcountgmifsFamilyLink
   const IEcountgmifsLinkFunc& link_func;
 
   EcountgmifsDefaultFamilyLink(
-      const IEcountgmifsFamily& family_,
-      const IEcountgmifsLinkFunc& link_func_
+    const IEcountgmifsFamily& family_,
+    const IEcountgmifsLinkFunc& link_func_
   ) :
     family(family_),
     link_func(link_func_)
@@ -235,13 +236,13 @@ public:
 
     default_family_link_(
       supplied_family_link_ == nullptr
-        ? std::make_unique<
-            EcountgmifsDefaultFamilyLink
-          >(
-            *family_,
-            *link_func_
-          )
-        : nullptr
+    ? std::make_unique<
+      EcountgmifsDefaultFamilyLink
+    >(
+      *family_,
+      *link_func_
+    )
+    : nullptr
     ),
 
     api {
@@ -256,9 +257,9 @@ public:
     family_,
     link_func_,
     supplied_family_link_ != nullptr
-      ? supplied_family_link_
-      : default_family_link_.get(),
-    resolve_criteria_ptrs(criteria)
+    ? supplied_family_link_
+    : default_family_link_.get(),
+      resolve_criteria_ptrs(criteria)
   }
   {
     check_input_dimensions(
@@ -317,7 +318,7 @@ public:
         ++i
     ) {
       criterion_names[
-        static_cast<R_xlen_t>(i)
+      static_cast<R_xlen_t>(i)
       ] =
         api.criteria[i]->name();
     }
@@ -334,7 +335,7 @@ public:
             Rcpp::List::create(
               Rcpp::Named("parameter_count") =
                 api.family_link->
-                  family_parameter_count()
+                family_parameter_count()
             )
         ),
         Rcpp::Named("link_func") =
@@ -345,17 +346,17 @@ public:
               Rcpp::List::create(
                 Rcpp::Named("parameter_count") =
                   api.family_link->
-                    link_parameter_count()
+                  link_parameter_count()
               )
           ),
           Rcpp::Named("family_link_supplied") =
             supplied_family_link_ != nullptr,
-          Rcpp::Named("criteria") =
-            criterion_names,
-          Rcpp::Named("enet_alpha") = api.enet_alpha,
-          Rcpp::Named("has_prior") = api.has_prior,
-          Rcpp::Named("weight_vec") =
-            ecountgmifs::output::to_r_vector(api.weight_vec)
+              Rcpp::Named("criteria") =
+                criterion_names,
+                Rcpp::Named("enet_alpha") = api.enet_alpha,
+                Rcpp::Named("has_prior") = api.has_prior,
+                Rcpp::Named("weight_vec") =
+                  ecountgmifs::output::to_r_vector(api.weight_vec)
     );
 
     if (include_data) {
@@ -371,82 +372,82 @@ public:
 
 private:
   static const IEcountgmifsFamilyLink*
-  resolve_optional_family_link_ptr(
+    resolve_optional_family_link_ptr(
       SEXP family_link
-  )
-  {
-    if (Rf_isNull(family_link)) {
-      return nullptr;
-    }
+    )
+    {
+      if (Rf_isNull(family_link)) {
+        return nullptr;
+      }
 
-    Rcpp::XPtr<IEcountgmifsFamilyLink> ptr(
-      family_link
-    );
-
-    if (ptr.get() == nullptr) {
-      Rcpp::stop(
-        "family_link contains a null external pointer"
+      Rcpp::XPtr<IEcountgmifsFamilyLink> ptr(
+          family_link
       );
-    }
 
-    return ptr.get();
-  }
+      if (ptr.get() == nullptr) {
+        Rcpp::stop(
+          "family_link contains a null external pointer"
+        );
+      }
+
+      return ptr.get();
+    }
 
   static const IEcountgmifsFamily*
-  resolve_optional_family_ptr(
+    resolve_optional_family_ptr(
       SEXP family,
       bool required
-  )
-  {
-    if (Rf_isNull(family)) {
-      if (required) {
+    )
+    {
+      if (Rf_isNull(family)) {
+        if (required) {
+          Rcpp::stop(
+            "family must be supplied when family_link is NULL"
+          );
+        }
+
+        return nullptr;
+      }
+
+      Rcpp::XPtr<IEcountgmifsFamily> ptr(family);
+
+      if (ptr.get() == nullptr) {
         Rcpp::stop(
-          "family must be supplied when family_link is NULL"
+          "family contains a null external pointer"
         );
       }
 
-      return nullptr;
+      return ptr.get();
     }
-
-    Rcpp::XPtr<IEcountgmifsFamily> ptr(family);
-
-    if (ptr.get() == nullptr) {
-      Rcpp::stop(
-        "family contains a null external pointer"
-      );
-    }
-
-    return ptr.get();
-  }
 
   static const IEcountgmifsLinkFunc*
-  resolve_optional_link_ptr(
+    resolve_optional_link_ptr(
       SEXP link_func,
       bool required
-  )
-  {
-    if (Rf_isNull(link_func)) {
-      if (required) {
+    )
+    {
+      if (Rf_isNull(link_func)) {
+        if (required) {
+          Rcpp::stop(
+            "link_func must be supplied when family_link is NULL"
+          );
+        }
+
+        return nullptr;
+      }
+
+      Rcpp::XPtr<IEcountgmifsLinkFunc> ptr(
+          link_func
+      );
+
+      if (ptr.get() == nullptr) {
         Rcpp::stop(
-          "link_func must be supplied when family_link is NULL"
+          "link_func contains a null external pointer"
         );
       }
 
-      return nullptr;
+      return ptr.get();
     }
-
-    Rcpp::XPtr<IEcountgmifsLinkFunc> ptr(
-      link_func
-    );
-
-    if (ptr.get() == nullptr) {
-      Rcpp::stop(
-        "link_func contains a null external pointer"
-      );
-    }
-
-    return ptr.get();
-  }
 
   static std::vector<const IEcountgmifsCriterion*> resolve_criteria_ptrs(
       Rcpp::Nullable<Rcpp::List> criteria
@@ -516,32 +517,32 @@ struct EcountgmifsControlInternal
     const EcountgmifsNloptControl& link_nlopt
   ) :
     api {
-      null_iteration_max,
-      stagewise_iteration_max,
-      null_family_parameter_abs_tol,
-      stagewise_objective_rel_tol,
-      stagewise_beta_step_norm_tol,
-      epsilon_max,
-      epsilon_start,
-      epsilon_min,
-      loglik_reltol_cutoff,
-      enet_abs_tol,
-      enet_rel_tol,
-      enet_max_iter,
+    null_iteration_max,
+    stagewise_iteration_max,
+    null_family_parameter_abs_tol,
+    stagewise_objective_rel_tol,
+    stagewise_beta_step_norm_tol,
+    epsilon_max,
+    epsilon_start,
+    epsilon_min,
+    loglik_reltol_cutoff,
+    enet_abs_tol,
+    enet_rel_tol,
+    enet_max_iter,
 
-      as_track_strategy(state_track_strategy),
-      state_track_freq,
-      verbose,
-      include_data,
+    as_track_strategy(state_track_strategy),
+    state_track_freq,
+    verbose,
+    include_data,
 
-      theta_initial,
-      theta_lower_bounds,
-      theta_upper_bounds,
+    theta_initial,
+    theta_lower_bounds,
+    theta_upper_bounds,
 
-      nonpen_nlopt,
-      family_nlopt,
-      link_nlopt
-    }
+    nonpen_nlopt,
+    family_nlopt,
+    link_nlopt
+  }
   {
     check_positive_integer(
       api.null_iteration_max,
@@ -646,87 +647,89 @@ struct EcountgmifsControlInternal
 
   Rcpp::List to_list() const
   {
-    return Rcpp::List::create(
-      Rcpp::Named("null_iteration_max") =
-        api.null_iteration_max,
+    Rcpp::List result;
 
-      Rcpp::Named("stagewise_iteration_max") =
-        api.stagewise_iteration_max,
+    result["null_iteration_max"] =
+      api.null_iteration_max;
 
-      Rcpp::Named("null_family_parameter_abs_tol") =
-        api.null_family_parameter_abs_tol,
+    result["stagewise_iteration_max"] =
+      api.stagewise_iteration_max;
 
-      Rcpp::Named("stagewise_objective_rel_tol") =
-        api.stagewise_objective_rel_tol,
+    result["null_family_parameter_abs_tol"] =
+      api.null_family_parameter_abs_tol;
 
-      Rcpp::Named("stagewise_beta_step_norm_tol") =
-        api.stagewise_beta_step_norm_tol,
+    result["stagewise_objective_rel_tol"] =
+      api.stagewise_objective_rel_tol;
 
-      Rcpp::Named("epsilon_max") =
-        api.epsilon_max,
+    result["stagewise_beta_step_norm_tol"] =
+      api.stagewise_beta_step_norm_tol;
 
-      Rcpp::Named("epsilon_start") =
-        api.epsilon_start,
+    result["epsilon_max"] =
+      api.epsilon_max;
 
-      Rcpp::Named("epsilon_min") =
-        api.epsilon_min,
+    result["epsilon_start"] =
+      api.epsilon_start;
 
-      Rcpp::Named("loglik_reltol_cutoff") =
-        api.loglik_reltol_cutoff,
+    result["epsilon_min"] =
+      api.epsilon_min;
 
-      Rcpp::Named("enet_abs_tol") =
-        api.enet_abs_tol,
+    result["loglik_reltol_cutoff"] =
+      api.loglik_reltol_cutoff;
 
-      Rcpp::Named("enet_rel_tol") =
-        api.enet_rel_tol,
+    result["enet_abs_tol"] =
+      api.enet_abs_tol;
 
-      Rcpp::Named("enet_max_iter") =
-        api.enet_max_iter,
+    result["enet_rel_tol"] =
+      api.enet_rel_tol;
 
-      Rcpp::Named("state_track_strategy") =
-        state_track_strategy_name(
-          api.state_track_strategy
-        ),
+    result["enet_max_iter"] =
+      api.enet_max_iter;
 
-      Rcpp::Named("state_track_freq") =
-        api.state_track_freq,
+    result["state_track_strategy"] =
+      state_track_strategy_name(
+        api.state_track_strategy
+      );
 
-      Rcpp::Named("verbose") =
-        api.verbose,
+    result["state_track_freq"] =
+      api.state_track_freq;
 
-      Rcpp::Named("include_data") =
-        api.include_data,
+    result["verbose"] =
+      api.verbose;
 
-      Rcpp::Named("theta_initial") =
-        ecountgmifs::output::to_r_vector(
-          api.theta_initial
-        ),
+    result["include_data"] =
+      api.include_data;
 
-      Rcpp::Named("theta_lower_bounds") =
-        ecountgmifs::output::to_r_vector(
-          api.theta_lower_bounds
-        ),
+    result["theta_initial"] =
+      ecountgmifs::output::to_r_vector(
+        api.theta_initial
+      );
 
-      Rcpp::Named("theta_upper_bounds") =
-        ecountgmifs::output::to_r_vector(
-          api.theta_upper_bounds
-        ),
+    result["theta_lower_bounds"] =
+      ecountgmifs::output::to_r_vector(
+        api.theta_lower_bounds
+      );
 
-      Rcpp::Named("nonpen_nlopt") =
-        nlopt_control_to_list(
-          api.nonpen_nlopt
-        ),
+    result["theta_upper_bounds"] =
+      ecountgmifs::output::to_r_vector(
+        api.theta_upper_bounds
+      );
 
-      Rcpp::Named("family_nlopt") =
-        nlopt_control_to_list(
-          api.family_nlopt
-        ),
+    result["nonpen_nlopt"] =
+      nlopt_control_to_list(
+        api.nonpen_nlopt
+      );
 
-      Rcpp::Named("link_nlopt") =
-        nlopt_control_to_list(
-          api.link_nlopt
-        )
-    );
+    result["family_nlopt"] =
+      nlopt_control_to_list(
+        api.family_nlopt
+      );
+
+    result["link_nlopt"] =
+      nlopt_control_to_list(
+        api.link_nlopt
+      );
+
+    return result;
   }
 
 private:
@@ -742,7 +745,7 @@ private:
 
     if (
         algorithm < 0 ||
-        algorithm >=
+          algorithm >=
           static_cast<int>(
             NLOPT_NUM_ALGORITHMS
           )
@@ -779,14 +782,14 @@ private:
           nlopt_control.algorithm
         ),
 
-      Rcpp::Named("xtol_rel") =
-        nlopt_control.xtol_rel,
+        Rcpp::Named("xtol_rel") =
+          nlopt_control.xtol_rel,
 
-      Rcpp::Named("ftol_rel") =
-        nlopt_control.ftol_rel,
+          Rcpp::Named("ftol_rel") =
+            nlopt_control.ftol_rel,
 
-      Rcpp::Named("maxeval") =
-        nlopt_control.maxeval
+            Rcpp::Named("maxeval") =
+              nlopt_control.maxeval
     );
   }
 };
@@ -1104,9 +1107,9 @@ public:
     ) {
       const double value =
         input.criteria[i]->evaluate(
-          input,
-          control,
-          api
+            input,
+            control,
+            api
         );
 
       check_finite_scalar(
@@ -1115,7 +1118,7 @@ public:
       );
 
       api.criteria[
-        static_cast<R_xlen_t>(i)
+      static_cast<R_xlen_t>(i)
       ] =
         value;
     }
@@ -1398,7 +1401,6 @@ struct EcountgmifsGradientsInternal
 private:
   const EcountgmifsInput& input;
   const EcountgmifsStateInternal& state;
-  arma::vec d_negloglik_d_eta;
   EcountgmifsGradients api;
 
 public:
@@ -1408,10 +1410,6 @@ public:
   ) :
   input(input_),
   state(state_),
-  d_negloglik_d_eta(
-    input.X.n_rows,
-    arma::fill::zeros
-  ),
   api {
     arma::vec(
       input.X.n_rows,
@@ -1422,6 +1420,11 @@ public:
       input.X.n_rows,
       arma::fill::zeros
     ), // d_mu_d_eta
+
+    arma::vec(
+      input.X.n_rows,
+      arma::fill::zeros
+    ), // d_negloglik_d_eta
 
     input.X, // d_eta_d_beta
     input.w, // d_eta_d_theta
@@ -1476,7 +1479,7 @@ public:
 
     api.d_negloglik_d_beta =
       api.d_eta_d_beta.t() *
-      d_negloglik_d_eta;
+      api.d_negloglik_d_eta;
 
     check_vector_finite(
       api.d_negloglik_d_beta,
@@ -1508,7 +1511,7 @@ public:
 
     gradient_view =
       api.d_eta_d_theta.t() *
-      d_negloglik_d_eta;
+      api.d_negloglik_d_eta;
   }
 
   void write_family_gradient(
@@ -1569,17 +1572,17 @@ private:
   void update_derivatives()
   {
     input.family_link->grad(
-      input.y,
-      state.eta(),
-      state.mu(),
-      state.family_parameters(),
-      state.link_parameters(),
-      api.d_negloglik_d_mu,
-      api.d_mu_d_eta,
-      api.d_mu_d_link_parameters,
-      d_negloglik_d_eta,
-      api.d_negloglik_d_family_parameters,
-      api.d_negloglik_d_link_parameters
+        input.y,
+        state.eta(),
+        state.mu(),
+        state.family_parameters(),
+        state.link_parameters(),
+        api.d_negloglik_d_mu,
+        api.d_mu_d_eta,
+        api.d_mu_d_link_parameters,
+        api.d_negloglik_d_eta,
+        api.d_negloglik_d_family_parameters,
+        api.d_negloglik_d_link_parameters
     );
   }
 };
@@ -1593,6 +1596,24 @@ private:
   const EcountgmifsControl& control;
   EcountgmifsPath api;
 
+  /*
+   * A best state is materialized only after the first subsequent iteration
+   * that does not improve that criterion. During a consecutive improvement
+   * streak, only these small flags and scalar values are updated.
+   */
+  std::vector<uint8_t> best_pending_;
+  std::vector<uint8_t> criterion_improved_;
+
+  bool previous_state_valid_ = false;
+  uint64_t previous_iteration_ = 0;
+  double previous_negloglik_ = arma::datum::nan;
+  double previous_pseudo_r2_ = arma::datum::nan;
+  double previous_elapsed_time_ = 0.0;
+  Rcpp::NumericVector previous_criteria_;
+
+  std::unordered_map<uint64_t, R_xlen_t>
+    saved_state_index_by_iteration_;
+
 public:
   EcountgmifsPathInternal(
     const EcountgmifsInput& input_,
@@ -1602,11 +1623,48 @@ public:
   input(input_),
   current_state(state_),
   control(control_),
-  api {}
+  api {},
+  best_pending_(
+    input_.criteria.size(),
+    static_cast<uint8_t>(0)
+  ),
+  criterion_improved_(
+    input_.criteria.size(),
+    static_cast<uint8_t>(0)
+  ),
+  previous_criteria_(
+    static_cast<R_xlen_t>(
+      input_.criteria.size()
+    )
+  )
   {
     api.best_criteria.resize(
       input.criteria.size()
     );
+
+    constexpr R_xlen_t initial_capacity = 16;
+
+    api.saved_states.state_names =
+      Rcpp::CharacterVector(initial_capacity);
+
+    api.saved_states.iterations =
+      Rcpp::NumericVector(initial_capacity);
+
+    api.saved_states.negloglik =
+      Rcpp::NumericVector(initial_capacity);
+
+    api.saved_states.pseudo_r2 =
+      Rcpp::NumericVector(initial_capacity);
+
+    api.saved_states.elapsed_time =
+      Rcpp::NumericVector(initial_capacity);
+
+    api.saved_states.criteria =
+      Rcpp::List(
+        static_cast<R_xlen_t>(
+          input.criteria.size()
+        )
+      );
 
     for (
         std::size_t i = 0;
@@ -1615,7 +1673,28 @@ public:
     ) {
       api.best_criteria[i].name =
         input.criteria[i]->name();
+
+      api.saved_states.criteria[
+      static_cast<R_xlen_t>(i)
+      ] =
+        Rcpp::NumericVector(initial_capacity);
     }
+
+    api.saved_states.beta = Rcpp::List(initial_capacity);
+    api.saved_states.theta = Rcpp::List(initial_capacity);
+    api.saved_states.family_parameters = Rcpp::List(initial_capacity);
+    api.saved_states.link_parameters = Rcpp::List(initial_capacity);
+    api.saved_states.xbeta = Rcpp::List(initial_capacity);
+    api.saved_states.wtheta = Rcpp::List(initial_capacity);
+    api.saved_states.eta = Rcpp::List(initial_capacity);
+    api.saved_states.mu = Rcpp::List(initial_capacity);
+    api.saved_states.active_set = Rcpp::List(initial_capacity);
+    api.saved_states.count = 0;
+
+    api.state_indices =
+      Rcpp::IntegerVector(initial_capacity);
+
+    api.state_count = 0;
 
     api.last_saved_active_set.zeros(
       current_state.view().param.active_set.n_elem
@@ -1738,138 +1817,159 @@ public:
       denominator;
   }
 
-  EcountgmifsState make_snapshot(
-      const EcountgmifsState& source
-  ) const
+  /*
+   * Process criterion values for the initial null state. No preceding state
+   * exists yet, so this call can only start pending improvement streaks.
+   */
+  void update_best_criteria()
   {
-    EcountgmifsState snapshot =
-      source;
-
-    /*
-     * Rcpp vectors use shared SEXP ownership. Clone criteria explicitly so
-     * later calls to State::evaluate_criteria() cannot overwrite criteria
-     * stored in earlier Path or best-criterion snapshots.
-     */
-    snapshot.criteria =
-      Rcpp::clone(source.criteria);
-
-    snapshot.pseudo_r2 =
-      pseudo_r2(snapshot.negloglik);
-
-    return snapshot;
+    update_best_criteria_impl(
+      nullptr,
+      nullptr,
+      nullptr,
+      nullptr
+    );
   }
 
-  void update_best_criteria()
+  /*
+   * Process criterion values for a completed stagewise iteration. The four
+   * supplied parameter vectors represent the preceding completed state and
+   * can be materialized only if an improvement streak ends here.
+   */
+  void update_best_criteria(
+      const arma::vec& previous_beta,
+      const arma::vec& previous_theta,
+      const arma::vec& previous_family_parameters,
+      const arma::vec& previous_link_parameters
+  )
+  {
+    update_best_criteria_impl(
+      &previous_beta,
+      &previous_theta,
+      &previous_family_parameters,
+      &previous_link_parameters
+    );
+  }
+
+  /*
+   * Save the initial/current state according to the configured strategy.
+   * This overload is used when no preceding parameter backup is needed.
+   */
+  void save_current_state(
+      bool force = false
+  )
+  {
+    save_current_state_impl(
+      force,
+      nullptr,
+      nullptr,
+      nullptr,
+      nullptr
+    );
+  }
+
+  /*
+   * For ACTIVE_SET_CHANGE, a support change at the current iteration proves
+   * that the preceding active-set segment has ended. Save that preceding
+   * state once, using the already available parameter backups.
+   */
+  void save_current_state(
+      const arma::vec& previous_beta,
+      const arma::vec& previous_theta,
+      const arma::vec& previous_family_parameters,
+      const arma::vec& previous_link_parameters,
+      bool force = false
+  )
+  {
+    save_current_state_impl(
+      force,
+      &previous_beta,
+      &previous_theta,
+      &previous_family_parameters,
+      &previous_link_parameters
+    );
+  }
+
+  /*
+   * Advance the cheap preceding-state metadata only after both best-criterion
+   * and ordinary path tracking have had the opportunity to consume it.
+   */
+  void remember_current_state()
   {
     const EcountgmifsState& current =
       current_state.view();
 
-    const std::size_t criterion_count =
-      api.best_criteria.size();
-
     if (
         current.criteria.size() !=
-          static_cast<R_xlen_t>(
-            criterion_count
-          )
+          previous_criteria_.size()
     ) {
       Rcpp::stop(
         "criterion tracking size mismatch"
       );
     }
 
+    previous_state_valid_ =
+      true;
+
+    previous_iteration_ =
+      current.iteration;
+
+    previous_negloglik_ =
+      current.negloglik;
+
+    previous_pseudo_r2_ =
+      pseudo_r2(
+        current.negloglik
+      );
+
+    previous_elapsed_time_ =
+      current.elapsed_time;
+
+    std::copy(
+      current.criteria.begin(),
+      current.criteria.end(),
+      previous_criteria_.begin()
+    );
+  }
+
+  /*
+   * At termination there is no following non-improving iteration to close a
+   * final improvement streak. Materialize the terminal state once and point
+   * every still-pending criterion to it.
+   */
+  void flush_pending_best_criteria()
+  {
+    bool has_pending = false;
+
+    for (const uint8_t pending : best_pending_) {
+      if (pending != 0) {
+        has_pending = true;
+        break;
+      }
+    }
+
+    if (!has_pending) {
+      return;
+    }
+
+    const R_xlen_t state_index =
+      ensure_current_state_saved();
+
     for (
         std::size_t i = 0;
-        i < criterion_count;
+        i < best_pending_.size();
         ++i
     ) {
-      const double candidate =
-        current.criteria[
-      static_cast<R_xlen_t>(i)
-        ];
-
-      EcountgmifsBestCriterion& best =
-        api.best_criteria[i];
-
-      if (candidate >= best.value) {
+      if (best_pending_[i] == 0) {
         continue;
       }
 
-      best.value =
-        candidate;
+      api.best_criteria[i].state_index =
+        state_index;
 
-      best.state =
-        make_snapshot(current);
+      best_pending_[i] =
+        0;
     }
-  }
-
-  void save_current_state(
-      bool force = false
-  )
-  {
-    if (
-        control.state_track_strategy ==
-          EnumStateTrackStrategy::NO_STATE_TRACKING
-    ) {
-      return;
-    }
-
-    const EcountgmifsState& state =
-      current_state.view();
-
-    api.active_set_changed =
-      arma::any(
-        state.param.active_set !=
-          api.last_saved_active_set
-      );
-
-    bool should_save = force;
-
-    if (!should_save) {
-      switch (control.state_track_strategy) {
-      case EnumStateTrackStrategy::ACTIVE_SET_CHANGE:
-        should_save =
-          api.active_set_changed;
-        break;
-
-      case EnumStateTrackStrategy::ALL_ITERATION:
-        should_save = true;
-        break;
-
-      case EnumStateTrackStrategy::EVERY_K_ITERATION:
-        should_save =
-          state.iteration %
-          control.state_track_freq == 0;
-        break;
-
-      case EnumStateTrackStrategy::NO_STATE_TRACKING:
-        should_save = false;
-        break;
-      }
-    }
-
-    if (!should_save) {
-      return;
-    }
-
-    EcountgmifsState snapshot =
-      make_snapshot(state);
-
-    if (
-        !api.states.empty() &&
-          api.states.back().iteration ==
-          snapshot.iteration
-    ) {
-      api.states.back() =
-        std::move(snapshot);
-    } else {
-      api.states.push_back(
-        std::move(snapshot)
-      );
-    }
-
-    api.last_saved_active_set =
-      state.param.active_set;
   }
 
   void finalize_message(
@@ -1925,21 +2025,24 @@ public:
       const EcountgmifsBestCriterion& best =
         api.best_criteria[i];
 
-      best_criterion_names[
-      r_index
-      ] =
+      if (best.state_index < 0) {
+        Rcpp::stop(
+          "best criterion '%s' has no finalized state",
+          best.name.c_str()
+        );
+      }
+
+      best_criterion_names[r_index] =
         best.name;
 
-      best_criteria[
-      r_index
-      ] =
+      best_criteria[r_index] =
         Rcpp::List::create(
           Rcpp::Named("value") =
             best.value,
 
             Rcpp::Named("state") =
-              EcountgmifsStateInternal::to_list(
-                best.state
+              saved_state_to_list(
+                best.state_index
               )
         );
     }
@@ -1948,28 +2051,26 @@ public:
       best_criterion_names;
 
     const R_xlen_t state_count =
-      static_cast<R_xlen_t>(
-        api.states.size()
-      );
+      api.state_count;
 
     Rcpp::CharacterVector state_names(
-      state_count
+        state_count
     );
 
     Rcpp::NumericVector iterations(
-      state_count
+        state_count
     );
 
     Rcpp::NumericVector negloglik(
-      state_count
+        state_count
     );
 
     Rcpp::NumericVector pseudo_r2_values(
-      state_count
+        state_count
     );
 
     Rcpp::NumericVector elapsed_time(
-      state_count
+        state_count
     );
 
     Rcpp::List beta(state_count);
@@ -1982,87 +2083,62 @@ public:
     Rcpp::List mu(state_count);
     Rcpp::List active_set(state_count);
 
-    for (
-        std::size_t i = 0;
-        i < api.states.size();
-        ++i
-    ) {
-      const R_xlen_t r_index =
-        static_cast<R_xlen_t>(i);
-
-      const EcountgmifsState& state =
-        api.states[i];
-
-      state_names[r_index] =
-        "iter_" +
-        std::to_string(state.iteration);
-
-      iterations[r_index] =
-        static_cast<double>(
-          state.iteration
+    for (R_xlen_t i = 0; i < state_count; ++i)
+    {
+      const R_xlen_t saved_index =
+        checked_saved_index(
+          api.state_indices[i]
         );
 
-      negloglik[r_index] =
-        state.negloglik;
+      state_names[i] =
+        api.saved_states.state_names[saved_index];
 
-      pseudo_r2_values[r_index] =
-        state.pseudo_r2;
+      iterations[i] =
+        api.saved_states.iterations[saved_index];
 
-      elapsed_time[r_index] =
-        state.elapsed_time;
+      negloglik[i] =
+        api.saved_states.negloglik[saved_index];
 
-      beta[r_index] =
-        ecountgmifs::output::to_r_vector(
-          state.param.param.beta
-        );
+      pseudo_r2_values[i] =
+        api.saved_states.pseudo_r2[saved_index];
 
-      theta[r_index] =
-        ecountgmifs::output::to_r_vector(
-          state.param.param.theta
-        );
+      elapsed_time[i] =
+        api.saved_states.elapsed_time[saved_index];
 
-      family_parameters[r_index] =
-        ecountgmifs::output::to_r_vector(
-          state.param.param.family_parameters
-        );
+      beta[i] =
+        api.saved_states.beta[saved_index];
 
-      link_parameters[r_index] =
-        ecountgmifs::output::to_r_vector(
-          state.param.param.link_parameters
-        );
+      theta[i] =
+        api.saved_states.theta[saved_index];
 
-      xbeta[r_index] =
-        ecountgmifs::output::to_r_vector(
-          state.param.xbeta
-        );
+      family_parameters[i] =
+        api.saved_states.family_parameters[saved_index];
 
-      wtheta[r_index] =
-        ecountgmifs::output::to_r_vector(
-          state.param.wtheta
-        );
+      link_parameters[i] =
+        api.saved_states.link_parameters[saved_index];
 
-      eta[r_index] =
-        ecountgmifs::output::to_r_vector(
-          state.param.eta
-        );
+      xbeta[i] =
+        api.saved_states.xbeta[saved_index];
 
-      mu[r_index] =
-        ecountgmifs::output::to_r_vector(
-          state.param.mu
-        );
+      wtheta[i] =
+        api.saved_states.wtheta[saved_index];
 
-      active_set[r_index] =
-        ecountgmifs::output::to_r_logical_vector(
-          state.param.active_set
-        );
+      eta[i] =
+        api.saved_states.eta[saved_index];
+
+      mu[i] =
+        api.saved_states.mu[saved_index];
+
+      active_set[i] =
+        api.saved_states.active_set[saved_index];
     }
 
     Rcpp::List criteria(
-      criterion_count
+        criterion_count
     );
 
     Rcpp::CharacterVector criterion_names(
-      criterion_count
+        criterion_count
     );
 
     for (
@@ -2075,50 +2151,37 @@ public:
           criterion_index
         );
 
+      const Rcpp::NumericVector saved_values =
+        api.saved_states.criteria[
+      r_criterion_index
+        ];
+
       Rcpp::NumericVector criterion_values(
-        state_count
+          state_count
       );
 
-      for (
-          std::size_t state_index = 0;
-          state_index < api.states.size();
-          ++state_index
-      ) {
-        const EcountgmifsState& state =
-          api.states[state_index];
-
-        if (
-            state.criteria.size() !=
-              criterion_count
-        ) {
-          Rcpp::stop(
-            "saved-state criterion size mismatch"
+      for (R_xlen_t state_index = 0;
+           state_index < state_count;
+           ++state_index)
+      {
+        const R_xlen_t saved_index =
+          checked_saved_index(
+            api.state_indices[state_index]
           );
-        }
 
-        criterion_values[
-          static_cast<R_xlen_t>(
-            state_index
-          )
-        ] =
-          state.criteria[
-            r_criterion_index
-          ];
+        criterion_values[state_index] =
+          saved_values[saved_index];
       }
 
       criterion_values.attr("names") =
         state_names;
 
-      criterion_names[
-        r_criterion_index
-      ] =
+      criterion_names[r_criterion_index] =
         api.best_criteria[
-          criterion_index
+      criterion_index
         ].name;
 
-      criteria[
-        r_criterion_index
-      ] =
+      criteria[r_criterion_index] =
         criterion_values;
     }
 
@@ -2144,44 +2207,44 @@ public:
         Rcpp::Named("iteration") =
           iterations,
 
-        Rcpp::Named("negloglik") =
-          negloglik,
+          Rcpp::Named("negloglik") =
+            negloglik,
 
-        Rcpp::Named("criteria") =
-          criteria,
+            Rcpp::Named("criteria") =
+              criteria,
 
-        Rcpp::Named("pseudo_r2") =
-          pseudo_r2_values,
+              Rcpp::Named("pseudo_r2") =
+                pseudo_r2_values,
 
-        Rcpp::Named("elapsed_time") =
-          elapsed_time,
+                Rcpp::Named("elapsed_time") =
+                  elapsed_time,
 
-        Rcpp::Named("beta") =
-          beta,
+                  Rcpp::Named("beta") =
+                    beta,
 
-        Rcpp::Named("theta") =
-          theta,
+                    Rcpp::Named("theta") =
+                      theta,
 
-        Rcpp::Named("family_parameters") =
-          family_parameters,
+                      Rcpp::Named("family_parameters") =
+                        family_parameters,
 
-        Rcpp::Named("link_parameters") =
-          link_parameters,
+                        Rcpp::Named("link_parameters") =
+                          link_parameters,
 
-        Rcpp::Named("xbeta") =
-          xbeta,
+                          Rcpp::Named("xbeta") =
+                            xbeta,
 
-        Rcpp::Named("wtheta") =
-          wtheta,
+                            Rcpp::Named("wtheta") =
+                              wtheta,
 
-        Rcpp::Named("eta") =
-          eta,
+                              Rcpp::Named("eta") =
+                                eta,
 
-        Rcpp::Named("mu") =
-          mu,
+                                Rcpp::Named("mu") =
+                                  mu,
 
-        Rcpp::Named("active_set") =
-          active_set
+                                  Rcpp::Named("active_set") =
+                                    active_set
       );
 
     return Rcpp::List::create(
@@ -2220,22 +2283,964 @@ public:
                       Rcpp::Named("total_time") =
                         api.total_time,
 
-                  Rcpp::Named("best_criteria") =
-                    best_criteria,
+                        Rcpp::Named("best_criteria") =
+                          best_criteria,
 
-                    Rcpp::Named("states") =
-                      states,
+                          Rcpp::Named("states") =
+                            states,
 
-                    Rcpp::Named("last_saved_active_set") =
-                      ecountgmifs::output::to_r_logical_vector(
-                        api.last_saved_active_set
-                      ),
+                            Rcpp::Named("last_saved_active_set") =
+                              ecountgmifs::output::to_r_logical_vector(
+                                api.last_saved_active_set
+                              ),
 
-                      Rcpp::Named("active_set_changed") =
-                        api.active_set_changed,
+                              Rcpp::Named("active_set_changed") =
+                                api.active_set_changed,
 
-                        Rcpp::Named("message") =
-                          api.message
+                                Rcpp::Named("message") =
+                                  api.message
+    );
+  }
+
+private:
+  static bool active_set_differs(
+      const arma::uvec& current_active_set,
+      const arma::vec& previous_beta
+  ) noexcept
+  {
+    if (
+        current_active_set.n_elem !=
+          previous_beta.n_elem
+    ) {
+      return true;
+    }
+
+    for (
+        arma::uword i = 0;
+        i < previous_beta.n_elem;
+        ++i
+    ) {
+      const bool previous_active =
+        previous_beta[i] != 0.0;
+
+      const bool current_active =
+        current_active_set[i] != 0;
+
+      if (previous_active != current_active) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  static arma::uvec active_set_from_beta(
+      const arma::vec& beta
+  )
+  {
+    arma::uvec active_set(
+        beta.n_elem
+    );
+
+    for (
+        arma::uword i = 0;
+        i < beta.n_elem;
+        ++i
+    ) {
+      active_set[i] =
+        beta[i] != 0.0;
+    }
+
+    return active_set;
+  }
+
+  R_xlen_t checked_saved_index(
+      int index
+  ) const
+  {
+    if (
+        index < 0 ||
+          static_cast<R_xlen_t>(index) >=
+          api.saved_states.count
+    ) {
+      Rcpp::stop(
+        "saved-state index is out of range"
+      );
+    }
+
+    return static_cast<R_xlen_t>(
+      index
+    );
+  }
+
+  R_xlen_t checked_saved_index(
+      R_xlen_t index
+  ) const
+  {
+    if (
+        index < 0 ||
+          index >= api.saved_states.count
+    ) {
+      Rcpp::stop(
+        "saved-state index is out of range"
+      );
+    }
+
+    return index;
+  }
+
+  static R_xlen_t grown_capacity(
+      R_xlen_t current_capacity
+  )
+  {
+    constexpr R_xlen_t minimum_capacity = 16;
+
+    if (current_capacity < minimum_capacity) {
+      return minimum_capacity;
+    }
+
+    if (
+        current_capacity >
+      std::numeric_limits<R_xlen_t>::max() / 2
+    ) {
+      Rcpp::stop(
+        "saved-state storage capacity overflow"
+      );
+    }
+
+    return current_capacity * 2;
+  }
+
+  static void grow_numeric_vector(
+      Rcpp::NumericVector& values,
+      R_xlen_t initialized_count,
+      R_xlen_t new_capacity
+  )
+  {
+    Rcpp::NumericVector grown(
+        new_capacity
+    );
+
+    std::copy_n(
+      values.begin(),
+      initialized_count,
+      grown.begin()
+    );
+
+    values =
+      grown;
+  }
+
+  static void grow_integer_vector(
+      Rcpp::IntegerVector& values,
+      R_xlen_t initialized_count,
+      R_xlen_t new_capacity
+  )
+  {
+    Rcpp::IntegerVector grown(
+        new_capacity
+    );
+
+    std::copy_n(
+      values.begin(),
+      initialized_count,
+      grown.begin()
+    );
+
+    values =
+      grown;
+  }
+
+  static void grow_character_vector(
+      Rcpp::CharacterVector& values,
+      R_xlen_t initialized_count,
+      R_xlen_t new_capacity
+  )
+  {
+    Rcpp::CharacterVector grown(
+        new_capacity
+    );
+
+    for (
+        R_xlen_t i = 0;
+        i < initialized_count;
+        ++i
+    ) {
+      grown[i] =
+        values[i];
+    }
+
+    values =
+      grown;
+  }
+
+  static void grow_list(
+      Rcpp::List& values,
+      R_xlen_t initialized_count,
+      R_xlen_t new_capacity
+  )
+  {
+    Rcpp::List grown(
+        new_capacity
+    );
+
+    for (
+        R_xlen_t i = 0;
+        i < initialized_count;
+        ++i
+    ) {
+      grown[i] =
+        values[i];
+    }
+
+    values =
+      grown;
+  }
+
+  void ensure_saved_state_capacity()
+  {
+    const R_xlen_t current_capacity =
+      api.saved_states.iterations.size();
+
+    if (
+        api.saved_states.count <
+          current_capacity
+    ) {
+      return;
+    }
+
+    const R_xlen_t new_capacity =
+      grown_capacity(
+        current_capacity
+      );
+
+    grow_character_vector(
+      api.saved_states.state_names,
+      api.saved_states.count,
+      new_capacity
+    );
+
+    grow_numeric_vector(
+      api.saved_states.iterations,
+      api.saved_states.count,
+      new_capacity
+    );
+
+    grow_numeric_vector(
+      api.saved_states.negloglik,
+      api.saved_states.count,
+      new_capacity
+    );
+
+    grow_numeric_vector(
+      api.saved_states.pseudo_r2,
+      api.saved_states.count,
+      new_capacity
+    );
+
+    grow_numeric_vector(
+      api.saved_states.elapsed_time,
+      api.saved_states.count,
+      new_capacity
+    );
+
+    for (
+        R_xlen_t i = 0;
+        i < api.saved_states.criteria.size();
+        ++i
+    ) {
+      Rcpp::NumericVector values =
+        api.saved_states.criteria[i];
+
+      grow_numeric_vector(
+        values,
+        api.saved_states.count,
+        new_capacity
+      );
+
+      api.saved_states.criteria[i] =
+        values;
+    }
+
+    grow_list(
+      api.saved_states.beta,
+      api.saved_states.count,
+      new_capacity
+    );
+
+    grow_list(
+      api.saved_states.theta,
+      api.saved_states.count,
+      new_capacity
+    );
+
+    grow_list(
+      api.saved_states.family_parameters,
+      api.saved_states.count,
+      new_capacity
+    );
+
+    grow_list(
+      api.saved_states.link_parameters,
+      api.saved_states.count,
+      new_capacity
+    );
+
+    grow_list(
+      api.saved_states.xbeta,
+      api.saved_states.count,
+      new_capacity
+    );
+
+    grow_list(
+      api.saved_states.wtheta,
+      api.saved_states.count,
+      new_capacity
+    );
+
+    grow_list(
+      api.saved_states.eta,
+      api.saved_states.count,
+      new_capacity
+    );
+
+    grow_list(
+      api.saved_states.mu,
+      api.saved_states.count,
+      new_capacity
+    );
+
+    grow_list(
+      api.saved_states.active_set,
+      api.saved_states.count,
+      new_capacity
+    );
+  }
+
+  void ensure_path_index_capacity()
+  {
+    const R_xlen_t current_capacity =
+      api.state_indices.size();
+
+    if (
+        api.state_count <
+          current_capacity
+    ) {
+      return;
+    }
+
+    grow_integer_vector(
+      api.state_indices,
+      api.state_count,
+      grown_capacity(
+        current_capacity
+      )
+    );
+  }
+
+  void append_path_state_index(
+      R_xlen_t state_index,
+      const arma::uvec& active_set
+  )
+  {
+    if (
+        state_index >
+      static_cast<R_xlen_t>(
+        std::numeric_limits<int>::max()
+      )
+    ) {
+      Rcpp::stop(
+        "too many saved states for R integer indexing"
+      );
+    }
+
+    const int r_index =
+      static_cast<int>(state_index);
+
+    if (
+        api.state_count > 0 &&
+          api.state_indices[
+    api.state_count - 1
+          ] == r_index
+    ) {
+      api.last_saved_active_set =
+        active_set;
+
+      return;
+    }
+
+    ensure_path_index_capacity();
+
+    api.state_indices[
+    api.state_count
+    ] =
+      r_index;
+
+    ++api.state_count;
+
+    api.last_saved_active_set =
+    active_set;
+  }
+
+
+  R_xlen_t append_saved_state(
+      uint64_t iteration,
+      double negloglik,
+      double pseudo_r2_value,
+      double elapsed_time,
+      const Rcpp::NumericVector& criteria,
+      const arma::vec& beta,
+      const arma::vec& theta,
+      const arma::vec& family_parameters,
+      const arma::vec& link_parameters,
+      const arma::vec& xbeta,
+      const arma::vec& wtheta,
+      const arma::vec& eta,
+      const arma::vec& mu,
+      const arma::uvec& active_set
+  )
+  {
+    const auto existing =
+      saved_state_index_by_iteration_.find(
+        iteration
+      );
+
+    if (
+        existing !=
+          saved_state_index_by_iteration_.end()
+    ) {
+      return existing->second;
+    }
+
+    if (
+        criteria.size() !=
+          static_cast<R_xlen_t>(
+            input.criteria.size()
+          )
+    ) {
+      Rcpp::stop(
+        "saved-state criterion size mismatch"
+      );
+    }
+
+    ensure_saved_state_capacity();
+
+    const R_xlen_t state_index =
+      api.saved_states.count;
+
+    api.saved_states.state_names[state_index] =
+      "iter_" +
+      std::to_string(iteration);
+
+    api.saved_states.iterations[state_index] =
+      static_cast<double>(iteration);
+
+    api.saved_states.negloglik[state_index] =
+      negloglik;
+
+    api.saved_states.pseudo_r2[state_index] =
+      pseudo_r2_value;
+
+    api.saved_states.elapsed_time[state_index] =
+      elapsed_time;
+
+    for (
+        std::size_t i = 0;
+        i < input.criteria.size();
+        ++i
+    ) {
+      const R_xlen_t r_index =
+        static_cast<R_xlen_t>(i);
+
+      Rcpp::NumericVector values =
+        api.saved_states.criteria[r_index];
+
+      values[state_index] =
+        criteria[r_index];
+    }
+
+    api.saved_states.beta[state_index] =
+      ecountgmifs::output::to_r_vector(
+        beta
+      );
+
+    api.saved_states.theta[state_index] =
+      ecountgmifs::output::to_r_vector(
+        theta
+      );
+
+    api.saved_states.family_parameters[state_index] =
+      ecountgmifs::output::to_r_vector(
+        family_parameters
+      );
+
+    api.saved_states.link_parameters[state_index] =
+      ecountgmifs::output::to_r_vector(
+        link_parameters
+      );
+
+    api.saved_states.xbeta[state_index] =
+      ecountgmifs::output::to_r_vector(
+        xbeta
+      );
+
+    api.saved_states.wtheta[state_index] =
+      ecountgmifs::output::to_r_vector(
+        wtheta
+      );
+
+    api.saved_states.eta[state_index] =
+      ecountgmifs::output::to_r_vector(
+        eta
+      );
+
+    api.saved_states.mu[state_index] =
+      ecountgmifs::output::to_r_vector(
+        mu
+      );
+
+    api.saved_states.active_set[state_index] =
+      ecountgmifs::output::to_r_logical_vector(
+        active_set
+      );
+
+    ++api.saved_states.count;
+
+    saved_state_index_by_iteration_.emplace(
+      iteration,
+      state_index
+    );
+
+    return state_index;
+  }
+
+  R_xlen_t ensure_current_state_saved()
+  {
+    const EcountgmifsState& current =
+      current_state.view();
+
+    return append_saved_state(
+      current.iteration,
+      current.negloglik,
+      pseudo_r2(current.negloglik),
+      current.elapsed_time,
+      current.criteria,
+      current.param.param.beta,
+      current.param.param.theta,
+      current.param.param.family_parameters,
+      current.param.param.link_parameters,
+      current.param.xbeta,
+      current.param.wtheta,
+      current.param.eta,
+      current.param.mu,
+      current.param.active_set
+    );
+  }
+
+  R_xlen_t ensure_previous_state_saved(
+      const arma::vec& previous_beta,
+      const arma::vec& previous_theta,
+      const arma::vec& previous_family_parameters,
+      const arma::vec& previous_link_parameters
+  )
+  {
+    if (!previous_state_valid_) {
+      Rcpp::stop(
+        "no preceding state is available for deferred saving"
+      );
+    }
+
+    const auto existing =
+      saved_state_index_by_iteration_.find(
+        previous_iteration_
+      );
+
+    if (
+        existing !=
+          saved_state_index_by_iteration_.end()
+    ) {
+      return existing->second;
+    }
+
+    arma::vec xbeta =
+      input.X *
+      previous_beta;
+
+    arma::vec wtheta =
+      input.w *
+      previous_theta;
+
+    arma::vec eta =
+      input.offset;
+
+    eta += xbeta;
+    eta += wtheta;
+
+    arma::vec mu(
+        input.X.n_rows
+    );
+
+    input.family_link->inverse(
+        eta,
+        previous_link_parameters,
+        mu
+    );
+
+    check_vector_finite(
+      mu,
+      "saved mu"
+    );
+
+    const arma::uvec active_set =
+      active_set_from_beta(
+        previous_beta
+      );
+
+    return append_saved_state(
+      previous_iteration_,
+      previous_negloglik_,
+      previous_pseudo_r2_,
+      previous_elapsed_time_,
+      previous_criteria_,
+      previous_beta,
+      previous_theta,
+      previous_family_parameters,
+      previous_link_parameters,
+      xbeta,
+      wtheta,
+      eta,
+      mu,
+      active_set
+    );
+  }
+
+  void update_best_criteria_impl(
+      const arma::vec* previous_beta,
+      const arma::vec* previous_theta,
+      const arma::vec* previous_family_parameters,
+      const arma::vec* previous_link_parameters
+  )
+  {
+    const EcountgmifsState& current =
+      current_state.view();
+
+    const std::size_t criterion_count =
+      api.best_criteria.size();
+
+    if (
+        current.criteria.size() !=
+          static_cast<R_xlen_t>(
+            criterion_count
+          )
+    ) {
+      Rcpp::stop(
+        "criterion tracking size mismatch"
+      );
+    }
+
+    bool save_previous = false;
+
+    for (
+        std::size_t i = 0;
+        i < criterion_count;
+        ++i
+    ) {
+      const double candidate =
+        current.criteria[
+      static_cast<R_xlen_t>(i)
+        ];
+
+      const bool improved =
+        candidate <
+          api.best_criteria[i].value;
+
+      criterion_improved_[i] =
+        static_cast<uint8_t>(
+          improved
+        );
+
+      if (
+          best_pending_[i] != 0 &&
+            !improved
+      ) {
+        save_previous =
+          true;
+      }
+    }
+
+    R_xlen_t previous_state_index = -1;
+
+    if (save_previous) {
+      if (
+          previous_beta == nullptr ||
+            previous_theta == nullptr ||
+            previous_family_parameters == nullptr ||
+            previous_link_parameters == nullptr
+      ) {
+        Rcpp::stop(
+          "preceding parameters are required to finalize a best state"
+        );
+      }
+
+      previous_state_index =
+        ensure_previous_state_saved(
+          *previous_beta,
+          *previous_theta,
+          *previous_family_parameters,
+          *previous_link_parameters
+        );
+    }
+
+    for (
+        std::size_t i = 0;
+        i < criterion_count;
+        ++i
+    ) {
+      EcountgmifsBestCriterion& best =
+        api.best_criteria[i];
+
+      if (criterion_improved_[i] != 0) {
+        best.value =
+          current.criteria[
+        static_cast<R_xlen_t>(i)
+          ];
+
+        best_pending_[i] =
+          1;
+
+        continue;
+      }
+
+      if (best_pending_[i] != 0) {
+        best.state_index =
+          previous_state_index;
+
+        best_pending_[i] =
+          0;
+      }
+    }
+  }
+
+  void save_current_state_impl(
+      bool force,
+      const arma::vec* previous_beta,
+      const arma::vec* previous_theta,
+      const arma::vec* previous_family_parameters,
+      const arma::vec* previous_link_parameters
+  )
+  {
+    if (
+        control.state_track_strategy ==
+          EnumStateTrackStrategy::NO_STATE_TRACKING
+    ) {
+      return;
+    }
+
+    const EcountgmifsState& current =
+      current_state.view();
+
+    if (force) {
+      const R_xlen_t state_index =
+        ensure_current_state_saved();
+
+      append_path_state_index(
+        state_index,
+        current.param.active_set
+      );
+
+      return;
+    }
+
+    switch (control.state_track_strategy)
+    {
+    case EnumStateTrackStrategy::ACTIVE_SET_CHANGE:
+    {
+      if (
+          previous_beta == nullptr ||
+            previous_theta == nullptr ||
+            previous_family_parameters == nullptr ||
+            previous_link_parameters == nullptr ||
+            !previous_state_valid_
+      ) {
+      return;
+    }
+
+      api.active_set_changed =
+        active_set_differs(
+          current.param.active_set,
+          *previous_beta
+        );
+
+      if (!api.active_set_changed) {
+        return;
+      }
+
+      const R_xlen_t state_index =
+        ensure_previous_state_saved(
+          *previous_beta,
+          *previous_theta,
+          *previous_family_parameters,
+          *previous_link_parameters
+        );
+
+      append_path_state_index(
+        state_index,
+        active_set_from_beta(
+          *previous_beta
+        )
+      );
+
+      return;
+    }
+
+    case EnumStateTrackStrategy::ALL_ITERATION:
+    {
+      const R_xlen_t state_index =
+        ensure_current_state_saved();
+
+      append_path_state_index(
+        state_index,
+        current.param.active_set
+      );
+
+      return;
+    }
+
+    case EnumStateTrackStrategy::EVERY_K_ITERATION:
+    {
+      if (
+          current.iteration %
+            control.state_track_freq != 0
+      ) {
+      return;
+    }
+
+      const R_xlen_t state_index =
+        ensure_current_state_saved();
+
+      append_path_state_index(
+        state_index,
+        current.param.active_set
+      );
+
+      return;
+    }
+
+    case EnumStateTrackStrategy::NO_STATE_TRACKING:
+      return;
+    }
+  }
+
+  Rcpp::NumericVector saved_criteria_at(
+      R_xlen_t state_index
+  ) const
+  {
+    state_index =
+      checked_saved_index(
+        state_index
+      );
+
+    const R_xlen_t criterion_count =
+      static_cast<R_xlen_t>(
+        api.best_criteria.size()
+      );
+
+    Rcpp::NumericVector values(
+        criterion_count
+    );
+
+    Rcpp::CharacterVector names(
+        criterion_count
+    );
+
+    for (
+        R_xlen_t i = 0;
+        i < criterion_count;
+        ++i
+    ) {
+      const Rcpp::NumericVector saved_values =
+        api.saved_states.criteria[i];
+
+      values[i] =
+        saved_values[state_index];
+
+      names[i] =
+        api.best_criteria[
+      static_cast<std::size_t>(i)
+        ].name;
+    }
+
+    values.attr("names") =
+      names;
+
+    return values;
+  }
+
+  Rcpp::List saved_state_to_list(
+      R_xlen_t state_index
+  ) const
+  {
+    state_index =
+      checked_saved_index(
+        state_index
+      );
+
+    Rcpp::List parameters =
+      Rcpp::List::create(
+        Rcpp::Named("beta") =
+          api.saved_states.beta[state_index],
+
+                               Rcpp::Named("theta") =
+                                 api.saved_states.theta[state_index],
+
+                                                       Rcpp::Named("family_parameters") =
+                                                         api.saved_states.family_parameters[state_index],
+
+                                                                                           Rcpp::Named("link_parameters") =
+                                                                                             api.saved_states.link_parameters[state_index]
+      );
+
+    Rcpp::List predictors =
+      Rcpp::List::create(
+        Rcpp::Named("parameters") =
+          parameters,
+
+          Rcpp::Named("xbeta") =
+            api.saved_states.xbeta[state_index],
+
+                                  Rcpp::Named("wtheta") =
+                                    api.saved_states.wtheta[state_index],
+
+                                                           Rcpp::Named("eta") =
+                                                             api.saved_states.eta[state_index],
+
+                                                                                 Rcpp::Named("mu") =
+                                                                                   api.saved_states.mu[state_index],
+
+                                                                                                      Rcpp::Named("active_set") =
+                                                                                                        api.saved_states.active_set[state_index]
+      );
+
+    return Rcpp::List::create(
+      Rcpp::Named("predictors") =
+        predictors,
+
+        Rcpp::Named("negloglik") =
+          api.saved_states.negloglik[state_index],
+
+                                    Rcpp::Named("criteria") =
+                                      saved_criteria_at(
+                                        state_index
+                                      ),
+
+                                      Rcpp::Named("iteration") =
+                                        api.saved_states.iterations[state_index],
+
+                                                                   Rcpp::Named("pseudo_r2") =
+                                                                     api.saved_states.pseudo_r2[state_index],
+
+                                                                                               Rcpp::Named("elapsed_time") =
+                                                                                                 api.saved_states.elapsed_time[state_index]
     );
   }
 };
@@ -2252,19 +3257,6 @@ private:
   EcountgmifsPathInternal& path;
 
   EcountgmifsStagewise api;
-
-  /*
-   * Temporary saturated-fit workspace. It belongs to the fitting
-   * coordinator, not to the current State or the completed Path result.
-   * Its stable member lifetime also makes it safe for NLopt callbacks.
-   */
-  arma::vec saturated_family_parameters_;
-  double saturated_negloglik_ = arma::datum::nan;
-
-  arma::vec theta_before_optimize_;
-  arma::vec family_parameters_before_optimize_;
-  arma::vec link_parameters_before_optimize_;
-  arma::vec saturated_family_parameters_before_optimize_;
 
   NloptOptimizerInternal null_nonpen_optimizer;
   NloptOptimizerInternal null_family_optimizer;
@@ -2293,25 +3285,6 @@ public:
   gradient(gradient_),
   path(path_),
   api {},
-  saturated_family_parameters_(
-    input_.family_link->family_initial_parameters()
-  ),
-
-  theta_before_optimize_(
-    state_.theta().n_elem
-  ),
-
-  family_parameters_before_optimize_(
-    state_.family_parameters().n_elem
-  ),
-
-  link_parameters_before_optimize_(
-    state_.link_parameters().n_elem
-  ),
-
-  saturated_family_parameters_before_optimize_(
-    saturated_family_parameters_.n_elem
-  ),
 
   null_nonpen_optimizer(
     state_.theta(),
@@ -2385,6 +3358,25 @@ public:
     control_.link_nlopt.maxeval
   )
   {
+    api.saturated_family_parameters =
+      input.family_link->family_initial_parameters();
+
+    api.theta_before_optimize.set_size(
+      state.theta().n_elem
+    );
+
+    api.family_parameters_before_optimize.set_size(
+      state.family_parameters().n_elem
+    );
+
+    api.link_parameters_before_optimize.set_size(
+      state.link_parameters().n_elem
+    );
+
+    api.saturated_family_parameters_before_optimize.set_size(
+      api.saturated_family_parameters.n_elem
+    );
+
     api.beta_start.zeros(
       input.X.n_cols
     );
@@ -2479,6 +3471,7 @@ public:
     state.evaluate_criteria();
     path.update_best_criteria();
     path.save_current_state(true);
+    path.remember_current_state();
 
     fit_stagewise_model();
 
@@ -2616,7 +3609,9 @@ private:
             outer_iteration < control.null_iteration_max;
             ++outer_iteration
         ) {
-          Rcpp::checkUserInterrupt();
+          if ((outer_iteration & 255U) == 0U) {
+            Rcpp::checkUserInterrupt();
+          }
 
           /*
            * Save the complete null-model state before the alternating update.
@@ -2881,7 +3876,7 @@ private:
      * Use the fitted null family parameters as the saturated optimizer's
      * starting point, but keep the workspace separate from current State.
      */
-    saturated_family_parameters_ =
+    api.saturated_family_parameters =
       state.family_parameters();
 
     refresh_saturated_negloglik();
@@ -2892,13 +3887,13 @@ private:
       control.verbose,
       "saturated: start"
       << ", family_parameters="
-      << saturated_family_parameters_.t()
+      << api.saturated_family_parameters.t()
       << ", initial_negloglik="
-      << saturated_negloglik_
+      << api.saturated_negloglik
     );
 
     NloptOptimizerInternal saturated_family_optimizer(
-        saturated_family_parameters_,
+        api.saturated_family_parameters,
         input.family_link->family_parameter_lower_bounds(),
         input.family_link->family_parameter_upper_bounds(),
         &EcountgmifsStagewiseInternal::saturated_family_objective,
@@ -2914,8 +3909,8 @@ private:
     );
 
     path.store_saturated_model(
-      saturated_family_parameters_,
-      saturated_negloglik_
+      api.saturated_family_parameters,
+      api.saturated_negloglik
     );
 
     ECOUNTGMIFS_VERBOSE(
@@ -2924,9 +3919,9 @@ private:
       << ", evaluations="
       << saturated_family_evaluation_count
       << ", family_parameters="
-      << saturated_family_parameters_.t()
+      << api.saturated_family_parameters.t()
       << ", negloglik="
-      << saturated_negloglik_
+      << api.saturated_negloglik
     );
 
     api.phase =
@@ -2964,7 +3959,9 @@ private:
       const auto iteration_start =
         std::chrono::steady_clock::now();
 
-      Rcpp::checkUserInterrupt();
+      if ((iteration & 255U) == 0U) {
+        Rcpp::checkUserInterrupt();
+      }
 
       const double negloglik_previous =
         state.negloglik();
@@ -3018,7 +4015,12 @@ private:
         elapsed_seconds(iteration_start)
       );
 
-      path.update_best_criteria();
+      path.update_best_criteria(
+        api.beta_start,
+        api.theta_before_optimize,
+        api.family_parameters_before_optimize,
+        api.link_parameters_before_optimize
+      );
 
       const double negloglik_current =
         state.negloglik();
@@ -3028,7 +4030,14 @@ private:
           negloglik_current
         );
 
-      path.save_current_state();
+      path.save_current_state(
+        api.beta_start,
+        api.theta_before_optimize,
+        api.family_parameters_before_optimize,
+        api.link_parameters_before_optimize
+      );
+
+      path.remember_current_state();
 
       const double objective_scale =
         std::max(
@@ -3266,6 +4275,7 @@ private:
      * snapshot instead of duplicating it.
      */
     path.save_current_state(true);
+    path.flush_pending_best_criteria();
     path.finalize_message(
       reason,
       api.termination_detail
@@ -3295,14 +4305,14 @@ private:
     if (state.theta().is_empty()) {
       return true;
     }
-    theta_before_optimize_ =
+    api.theta_before_optimize =
       state.theta();
 
     const double negloglik_before =
       state.negloglik();
 
     optimizer.set_parameters(
-      theta_before_optimize_
+      api.theta_before_optimize
     );
 
     optimizer.optimize();
@@ -3322,7 +4332,7 @@ private:
       state.negloglik();
 
     state.set_theta(
-      theta_before_optimize_
+      api.theta_before_optimize
     );
 
     Rcpp::warning(
@@ -3344,14 +4354,14 @@ private:
     if (state.family_parameters().is_empty()) {
       return true;
     }
-    family_parameters_before_optimize_ =
+    api.family_parameters_before_optimize =
       state.family_parameters();
 
     const double negloglik_before =
       state.negloglik();
 
     optimizer.set_parameters(
-      family_parameters_before_optimize_
+      api.family_parameters_before_optimize
     );
 
     optimizer.optimize();
@@ -3371,7 +4381,7 @@ private:
       state.negloglik();
 
     state.set_family_parameters(
-      family_parameters_before_optimize_
+      api.family_parameters_before_optimize
     );
 
     Rcpp::warning(
@@ -3395,14 +4405,14 @@ private:
       return true;
     }
 
-    link_parameters_before_optimize_ =
+    api.link_parameters_before_optimize =
       state.link_parameters();
 
     const double negloglik_before =
       state.negloglik();
 
     optimizer.set_parameters(
-      link_parameters_before_optimize_
+      api.link_parameters_before_optimize
     );
 
     optimizer.optimize();
@@ -3422,7 +4432,7 @@ private:
       state.negloglik();
 
     state.set_link_parameters(
-      link_parameters_before_optimize_
+      api.link_parameters_before_optimize
     );
 
     Rcpp::warning(
@@ -3441,14 +4451,14 @@ private:
       NloptOptimizerInternal& optimizer
   )
   {
-    saturated_family_parameters_before_optimize_ =
-      saturated_family_parameters_;
+    api.saturated_family_parameters_before_optimize =
+      api.saturated_family_parameters;
 
     const double negloglik_before =
-      saturated_negloglik_;
+      api.saturated_negloglik;
 
     optimizer.set_parameters(
-      saturated_family_parameters_before_optimize_
+      api.saturated_family_parameters_before_optimize
     );
 
     optimizer.optimize();
@@ -3461,20 +4471,20 @@ private:
     );
 
     if (
-        saturated_negloglik_ <=
+        api.saturated_negloglik <=
           negloglik_before
     ) {
       return true;
     }
 
     const double rejected_negloglik =
-      saturated_negloglik_;
+      api.saturated_negloglik;
 
     set_saturated_family_parameters(
       static_cast<unsigned>(
-        saturated_family_parameters_before_optimize_.n_elem
+        api.saturated_family_parameters_before_optimize.n_elem
       ),
-      saturated_family_parameters_before_optimize_.memptr()
+      api.saturated_family_parameters_before_optimize.memptr()
     );
 
     Rcpp::warning(
@@ -3493,17 +4503,17 @@ private:
       const double* values
   )
   {
-    if (n != saturated_family_parameters_.n_elem) {
+    if (n != api.saturated_family_parameters.n_elem) {
       Rcpp::stop(
         "incorrect saturated family parameter count"
       );
     }
 
-    if (values != saturated_family_parameters_.memptr()) {
+    if (values != api.saturated_family_parameters.memptr()) {
       std::copy_n(
         values,
         n,
-        saturated_family_parameters_.memptr()
+        api.saturated_family_parameters.memptr()
       );
     }
 
@@ -3515,12 +4525,12 @@ private:
     input.family_link->negloglik(
         input.y,
         input.y,
-        saturated_family_parameters_,
-        saturated_negloglik_
+        api.saturated_family_parameters,
+        api.saturated_negloglik
     );
 
     check_finite_scalar(
-      saturated_negloglik_,
+      api.saturated_negloglik,
       "saturated negloglik"
     );
   }
@@ -3542,7 +4552,7 @@ private:
         values
       );
 
-      return stagewise.saturated_negloglik_;
+      return stagewise.api.saturated_negloglik;
   }
 
   static double nonpen_objective(
@@ -3824,17 +4834,17 @@ struct EcountgmifsContextInternal
           control.api.include_data
         ),
 
-      Rcpp::Named("control") =
-        control.to_list(),
+        Rcpp::Named("control") =
+          control.to_list(),
 
-      Rcpp::Named("terminal_state") =
-        path.current_state_to_list(),
+          Rcpp::Named("terminal_state") =
+            path.current_state_to_list(),
 
-      Rcpp::Named("path") =
-        path.to_list(),
+            Rcpp::Named("path") =
+              path.to_list(),
 
-      Rcpp::Named("stagewise") =
-        stagewise.to_list()
+              Rcpp::Named("stagewise") =
+                stagewise.to_list()
     );
   }
 };

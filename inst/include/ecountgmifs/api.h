@@ -330,6 +330,7 @@ struct EcountgmifsGradients
 {
   arma::vec d_negloglik_d_mu;
   arma::vec d_mu_d_eta;
+  arma::vec d_negloglik_d_eta;
 
   const arma::mat& d_eta_d_beta;
   const arma::mat& d_eta_d_theta;
@@ -380,6 +381,19 @@ struct EcountgmifsStagewise
   arma::vec delta_beta;
 
   /*
+   * Generic fitting workspaces retained across optimizer calls.
+   * These belong to the stagewise state, while optimizer objects and
+   * callback-specific bookkeeping remain implementation details.
+   */
+  arma::vec saturated_family_parameters;
+  double saturated_negloglik = arma::datum::nan;
+
+  arma::vec theta_before_optimize;
+  arma::vec family_parameters_before_optimize;
+  arma::vec link_parameters_before_optimize;
+  arma::vec saturated_family_parameters_before_optimize;
+
+  /*
    * Numerical explanation produced by stagewise.
    *
    * Examples:
@@ -426,7 +440,40 @@ struct EcountgmifsBestCriterion
   double value =
     std::numeric_limits<double>::infinity();
 
-  EcountgmifsState state;
+  /*
+   * Zero-based index into the R-backed saved-state pool in EcountgmifsPath::saved_states.
+   * A negative value means that the best state is still pending and has not
+   * yet been materialized.
+   */
+  R_xlen_t state_index = -1;
+};
+
+struct EcountgmifsSavedStates
+{
+  /*
+   * Capacity-backed R storage for every distinct materialized iteration.
+   * Ordinary path tracking and best criteria refer to these entries by
+   * zero-based index.
+   */
+  Rcpp::CharacterVector state_names;
+  Rcpp::NumericVector iterations;
+  Rcpp::NumericVector negloglik;
+  Rcpp::NumericVector pseudo_r2;
+  Rcpp::NumericVector elapsed_time;
+
+  Rcpp::List criteria;
+  Rcpp::List beta;
+  Rcpp::List theta;
+  Rcpp::List family_parameters;
+  Rcpp::List link_parameters;
+  Rcpp::List xbeta;
+  Rcpp::List wtheta;
+  Rcpp::List eta;
+  Rcpp::List mu;
+  Rcpp::List active_set;
+
+  /* Number of initialized entries in the capacity-backed storage. */
+  R_xlen_t count = 0;
 };
 
 struct EcountgmifsPath
@@ -456,7 +503,18 @@ struct EcountgmifsPath
   std::vector<EcountgmifsBestCriterion>
     best_criteria;
 
-  std::vector<EcountgmifsState> states;
+  /*
+   * Every distinct saved iteration is materialized at most once here.
+   * Ordinary path tracking and all best criteria refer to it by index.
+   */
+  EcountgmifsSavedStates saved_states;
+
+  /* Zero-based indices selecting the ordinary tracked path states. */
+  Rcpp::IntegerVector state_indices;
+
+  /* Number of initialized entries in state_indices. */
+  R_xlen_t state_count = 0;
+
   arma::uvec last_saved_active_set;
   bool active_set_changed = false;
   std::string message;
