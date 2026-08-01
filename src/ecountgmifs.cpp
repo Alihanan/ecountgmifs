@@ -260,5 +260,13 @@ Rcpp::List ecountgmifs_cpp(
 
   ctx.stagewise.fit();
 
-  return ctx.to_list();
+  Rcpp::List output = ctx.to_list();
+
+  output.attr("class") =
+    Rcpp::CharacterVector::create(
+      "ecountgmifs",
+      "list"
+    );
+
+  return output;
 }

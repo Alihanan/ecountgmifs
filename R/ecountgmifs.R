@@ -405,6 +405,32 @@ ecountgmifs <- function(
   )
 
   out$call <- match.call()
+
+  # Lightweight plotting and printing metadata are retained even when
+  # `include.data = FALSE`. The prior-weight vector is needed for the optional
+  # ground-truth baseline and is only length p.
+  predictor_names <- if (is.null(colnames(X))) {
+    paste0("X", seq_len(ncol(X)))
+  } else {
+    make.unique(as.character(colnames(X)))
+  }
+
+  unpenalized_names <- if (is.null(colnames(w))) {
+    paste0("theta", seq_len(ncol(w)))
+  } else {
+    make.unique(as.character(colnames(w)))
+  }
+
+  out$input$weight_vec <- weight.vec
+
+  out <- .ecountgmifs.assign.parameter.names(
+    object = out,
+    predictor.names = predictor_names,
+    unpenalized.names = unpenalized_names
+  )
+
+  out$input$response_name <- deparse(substitute(y))
+
   class(out) <- c("ecountgmifs", class(out))
   out
 }
