@@ -255,7 +255,6 @@ struct PoissonFamily final : public IEcountgmifsFamily
 private:
   double mu_min_cap_;
   double mu_max_cap_;
-  double poisson_fallback_eps_;
 
   void validate_mu_caps() const
   {
@@ -346,6 +345,8 @@ public:
         "the dispersion bounds"
       );
     }
+
+    validate_settings();
   }
 
 

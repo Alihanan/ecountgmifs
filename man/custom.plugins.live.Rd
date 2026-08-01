@@ -2,65 +2,97 @@
 % Please edit documentation in R/plugin_documentation.R
 \name{custom.plugins.live}
 \alias{custom.plugins.live}
-\title{Live-compiled C++ plugins}
+\title{Live-compiled custom C++ plugins}
 \description{
-Live plugins are ordinary children of the complete interfaces shown on
-\link{custom.plugins}, compiled with \code{Rcpp::sourceCpp()} during the R session. A
-source string or file must include \code{ecountgmifs/api.h} and export a factory
-returning an owning XPtr to the interface. \code{\link[=compile.link]{compile.link()}},
-\code{\link[=compile.family]{compile.family()}}, \code{\link[=compile.family.link]{compile.family.link()}}, and \code{\link[=compile.criterion]{compile.criterion()}} share
-one cache keyed by source, factory arguments, plugin type, package version,
-R version, and platform.
-}
-\section{Complete live source examples}{
+A live plugin is a complete C++ child of one public interface plus an
+exported factory returning the corresponding owning \code{Rcpp::XPtr}.
+\code{\link[=compile.link]{compile.link()}}, \code{\link[=compile.family]{compile.family()}}, \code{\link[=compile.family.link]{compile.family.link()}}, and
+\code{\link[=compile.criterion]{compile.criterion()}} call \code{Rcpp::sourceCpp()}, invoke the exported R factory
+directly, validate the returned interface metadata, and cache the result.
+Every derived class must override \code{prepare(input, control)}, using a no-op
+implementation when no one-time setup is required.
+File-based variants read a complete \code{.cpp} file and use the same path.
 
-These examples intentionally contain the entire source as one character
-value. They can be copied, modified, and passed directly to the compiler.
+The source must include the public API and all dependencies needed by
+\code{api.h}. Live C++ has native evaluation speed after the one-time compilation
+cost. A live plugin must not retain references to temporary R objects unless
+it explicitly preserves them. A plugin with mutable data prepared per fit
+must not be shared by concurrent fits; implementations that call R must also
+remain on the R main thread.
 }
-
 \examples{
-live.log.code <- paste(c(
+\dontrun{
+live.log.source <- paste(c(
   "#include <RcppArmadillo.h>",
   "// [[Rcpp::depends(RcppArmadillo)]]",
   "// [[Rcpp::depends(nloptr)]]",
   "// [[Rcpp::depends(ecountgmifs)]]",
+  "// [[Rcpp::plugins(cpp17)]]",
   "#include <ecountgmifs/api.h>",
-  "class UserLogLink final : public IEcountgmifsLinkFunc {",
+  "#include <stdexcept>",
+  "",
+  "class UserLogLink final : public IEcountgmifsLinkFunc",
+  "{",
   "public:",
-  "  std::string name() const override { return \\\\"user.log\\"; }",
+  "  ~UserLogLink() override = default;",
+  "  std::string name() const override { return \"UserLog\"; }",
   "  arma::uword parameter_count() const noexcept override { return 0; }",
-  "  void inverse(const arma::vec& eta, const arma::vec&, arma::vec& mu) const override { mu = arma::exp(eta); }",
-  "  void grad(const arma::vec& eta, const arma::vec&, arma::vec& d, arma::mat& p) const override { d = arma::exp(eta); p.set_size(eta.n_elem, 0); }",
-  "};",
-  "// [[Rcpp::export]]",
-  "SEXP create_user_log() { return Rcpp::XPtr<IEcountgmifsLinkFunc>(new UserLogLink(), true); }"
-), collapse = "\\\\n")
-
-live.aic.code <- paste(c(
-  "#include <RcppArmadillo.h>",
-  "// [[Rcpp::depends(RcppArmadillo)]]",
-  "// [[Rcpp::depends(nloptr)]]",
-  "// [[Rcpp::depends(ecountgmifs)]]",
-  "#include <ecountgmifs/api.h>",
-  "class UserAIC final : public IEcountgmifsCriterion {",
-  "public:",
-  "  std::string name() const override { return \\\\"user.AIC.nnz\\"; }",
-  "  double evaluate(const EcountgmifsInput&, const EcountgmifsControl&, const EcountgmifsState& state) const override {",
-  "    const double df = arma::accu(state.param.param.beta != 0.0);",
-  "    return 2.0 * state.negloglik + 2.0 * df;",
+  "  void prepare(const EcountgmifsInput& input, const EcountgmifsControl& control) const override",
+  "  {",
+  "    (void) input;",
+  "    (void) control;",
+  "  }",
+  "  void inverse(",
+  "      const arma::vec& eta,",
+  "      const arma::vec& link_parameters,",
+  "      arma::vec& mu",
+  "  ) const override",
+  "  {",
+  "    if (!link_parameters.empty())",
+  "      throw std::invalid_argument(\"UserLog expects no parameters.\");",
+  "    mu = arma::exp(eta);",
+  "  }",
+  "  void grad(",
+  "      const arma::vec& eta,",
+  "      const arma::vec& link_parameters,",
+  "      arma::vec& d_mu_d_eta,",
+  "      arma::mat& d_mu_d_link_parameters",
+  "  ) const override",
+  "  {",
+  "    if (!link_parameters.empty())",
+  "      throw std::invalid_argument(\"UserLog expects no parameters.\");",
+  "    d_mu_d_eta = arma::exp(eta);",
+  "    d_mu_d_link_parameters.set_size(eta.n_elem, 0);",
   "  }",
   "};",
+  "",
   "// [[Rcpp::export]]",
-  "SEXP create_user_aic() { return Rcpp::XPtr<IEcountgmifsCriterion>(new UserAIC(), true); }"
+  "SEXP create_user_log_link()",
+  "{",
+  "  return Rcpp::XPtr<IEcountgmifsLinkFunc>(new UserLogLink(), true);",
+  "}"
 ), collapse = "\\\\n")
 
-\dontrun{
-link <- compile.link(live.log.code, "create_user_log")
-criterion <- compile.criterion(live.aic.code, "create_user_aic")
+user.link <- compile.link(
+  code = live.log.source,
+  factory = "create_user_log_link",
+  name = "UserLog"
+)
+
+set.seed(1)
+X <- matrix(rnorm(80), 20, 4)
+y <- rpois(20, 2)
+fit <- ecountgmifs(
+  X = X,
+  y = y,
+  family = plugin.family.poisson.builtin(),
+  link = user.link,
+  control = ecountgmifs.control(stagewise.iteration.max = 20L)
+)
 }
 
 }
 \seealso{
-\link{custom.plugins}, \link{link.plugins}, \link{family.plugins},
-\link{family.link.plugins}, \link{information.criteria}
+\link{custom.plugins}, \code{\link[=compile.link]{compile.link()}}, \code{\link[=compile.family]{compile.family()}},
+\code{\link[=compile.family.link]{compile.family.link()}}, \code{\link[=compile.criterion]{compile.criterion()}}
 }

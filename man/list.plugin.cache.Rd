@@ -2,9 +2,12 @@
 % Please edit documentation in R/plugin_compile.R
 \name{list.plugin.cache}
 \alias{list.plugin.cache}
+\alias{list.criterion.cache}
 \title{List live-compiled plugin cache keys}
 \usage{
 list.plugin.cache()
+
+list.criterion.cache()
 }
 \value{
 Character vector of cache keys.
@@ -14,13 +17,10 @@ List live-compiled plugin cache keys
 }
 \seealso{
 Other live-compiled plugins:
-\code{\link[=clear.criterion.cache]{clear.criterion.cache()}},
 \code{\link[=clear.plugin.cache]{clear.plugin.cache()}},
 \code{\link[=compile.criterion]{compile.criterion()}},
-\code{\link[=compile.criterion.file]{compile.criterion.file()}},
 \code{\link[=compile.family]{compile.family()}},
 \code{\link[=compile.family.link]{compile.family.link()}},
-\code{\link[=compile.link]{compile.link()}},
-\code{\link[=list.criterion.cache]{list.criterion.cache()}}
+\code{\link[=compile.link]{compile.link()}}
 }
 \concept{live-compiled plugins}

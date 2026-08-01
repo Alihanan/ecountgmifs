@@ -3,37 +3,55 @@
 \name{link.plugins}
 \alias{link.plugins}
 \alias{link-plugins}
-\alias{log.link.builtin}
-\alias{log.link.live}
-\alias{log.link.r.environment}
-\alias{log.link.r.closure}
-\alias{softplus.link.builtin}
-\alias{softplus.link.live}
-\alias{softplus.link.r.environment}
-\alias{softplus.link.r.closure}
-\alias{capped.log.link.r.environment}
-\alias{capped.log.link.r.closure}
-\title{Link plugin examples in four implementation variants}
+\alias{plugin.link.log.builtin}
+\alias{plugin.link.log.live}
+\alias{plugin.link.log.r.environment}
+\alias{plugin.link.log.r.closure}
+\alias{plugin.link.softplus.builtin}
+\alias{plugin.link.softplus.live}
+\alias{plugin.link.softplus.r.environment}
+\alias{plugin.link.softplus.r.closure}
+\alias{plugin.link.capped.log.r.environment}
+\alias{plugin.link.capped.log.r.closure}
+\alias{example.log.link}
+\alias{example.softplus.link}
+\alias{example.r.log.link}
+\alias{example.r.softplus.link}
+\alias{example.r.capped.log.link.environment}
+\alias{example.r.capped.log.link.closure}
+\title{Link plugins in four implementation variants}
 \usage{
-\method{log}{link.builtin}()
+plugin.link.log.builtin()
 
-\method{log}{link.live}(cache = TRUE)
+plugin.link.log.live(cache = TRUE)
 
-\method{log}{link.r.environment}()
+plugin.link.log.r.environment()
 
-\method{log}{link.r.closure}()
+plugin.link.log.r.closure()
 
-softplus.link.builtin()
+plugin.link.softplus.builtin()
 
-softplus.link.live(cache = TRUE)
+plugin.link.softplus.live(cache = TRUE)
 
-softplus.link.r.environment()
+plugin.link.softplus.r.environment()
 
-softplus.link.r.closure()
+plugin.link.softplus.r.closure()
 
-capped.log.link.r.environment(mu.min.cap = 1e-12, mu.max.cap = 1e+12)
+plugin.link.capped.log.r.environment(mu.min.cap = 1e-12, mu.max.cap = 1e+12)
 
-capped.log.link.r.closure(mu.min.cap = 1e-12, mu.max.cap = 1e+12)
+plugin.link.capped.log.r.closure(mu.min.cap = 1e-12, mu.max.cap = 1e+12)
+
+example.log.link()
+
+example.softplus.link()
+
+example.r.log.link()
+
+example.r.softplus.link()
+
+example.r.capped.log.link.environment(mu.min.cap = 1e-12, mu.max.cap = 1e+12)
+
+example.r.capped.log.link.closure(mu.min.cap = 1e-12, mu.max.cap = 1e+12)
 }
 \arguments{
 \item{cache}{Reuse the live-compiled object in the current R session.}
@@ -44,23 +62,67 @@ capped.log.link.r.closure(mu.min.cap = 1e-12, mu.max.cap = 1e+12)
 An external pointer to an \code{IEcountgmifsLinkFunc} child.
 }
 \description{
-Log and softplus links are provided as package-built C++, live-compiled C++,
-R callbacks with an explicit retained environment, and R callbacks created
-inside a closure factory. Every constructor returns an external pointer
-accepted by the \code{link_func} argument of \code{\link[=ecountgmifs]{ecountgmifs()}}.
+A link plugin represents the inverse link \code{mu = g^{-1}(eta)} and its
+derivatives. \code{\link[=r.link]{r.link()}} optionally invokes
+\code{prepare(input, control, environment)} once before fitting. Its evaluation
+callbacks have signatures
+\code{inverse(eta, link.parameters, environment)} and
+\code{grad(eta, link.parameters, environment)}.
 
-The optimized softplus parameter is supplied through \code{link.parameters}; it
-is not auxiliary callback state. Fixed non-optimized values may be stored in
-an explicit environment or captured by a closure, as illustrated by the
-capped-log constructors.
+\code{inverse()} returns a numeric vector of length \code{length(eta)}. \code{grad()} returns
+a list with \code{d_mu_d_eta}, a vector of that length, and
+\code{d_mu_d_link_parameters}, a matrix with one row per observation and one
+column per optimized link parameter. For zero link parameters, return an
+\verb{n x 0} matrix.
 }
+\section{Current examples}{
+
+The log link has no optimized parameters and computes \code{mu = exp(eta)}. The
+softplus link computes \code{log(1 + exp(a * eta)) / a}; \code{a} is an optimized link
+parameter with initial value \code{1}, lower bound \code{1e-8}, and upper bound \code{Inf}.
+The capped-log R examples have no optimized parameters: \code{mu.min.cap} and
+\code{mu.max.cap} are fixed auxiliary configuration retained in an environment or
+closure.
+}
+
+\section{Four variants}{
+
+\code{plugin.link.log.builtin()} and \code{plugin.link.softplus.builtin()} use native classes from
+\code{src/example.h}. \code{.live()} constructors compile complete C++ children of
+\code{IEcountgmifsLinkFunc}. \code{.r.environment()} constructors retain explicit
+inspectable data. \code{.r.closure()} constructors retain fixed values lexically.
+}
+
+\section{Performance and thread safety}{
+
+Built-in and live C++ execute without entering R and are the fast variants.
+R-backed callbacks cross the R/C++ boundary once per vectorized evaluation,
+never once per observation. They must run on the R main thread and are not
+suitable for parallel calls into R. Explicit mutable environments and
+closure mutation are not thread-safe; immutable closure or environment data
+is preferable during fitting.
+}
+
 \examples{
 links <- list(
-  builtin = log.link.builtin(),
-  live = log.link.live(),
-  environment = capped.log.link.r.environment(1e-12, 1e12),
-  closure = capped.log.link.r.closure(1e-12, 1e12)
+  builtin = plugin.link.log.builtin(),
+  live = plugin.link.log.live(),
+  environment = plugin.link.capped.log.r.environment(1e-12, 1e12),
+  closure = plugin.link.capped.log.r.closure(1e-12, 1e12)
 )
+
+\dontrun{
+set.seed(1)
+X <- matrix(rnorm(80), 20, 4)
+y <- rpois(20, 2)
+fit <- ecountgmifs(
+  X = X,
+  y = y,
+  family = plugin.family.poisson.builtin(),
+  link = plugin.link.capped.log.r.closure(1e-12, 1e12),
+  control = ecountgmifs.control(stagewise.iteration.max = 20L)
+)
+}
 
 }
 \seealso{

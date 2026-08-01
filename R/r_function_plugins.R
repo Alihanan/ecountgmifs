@@ -14,6 +14,14 @@
   x
 }
 
+.r.prepare.callback <- function(x) {
+  if (is.null(x)) {
+    return(function(input, control, environment) invisible(NULL))
+  }
+
+  .r.callback(x, "prepare")
+}
+
 .r.as.environment <- function(x) {
   if (is.null(x)) {
     return(new.env(parent = emptyenv()))
@@ -157,12 +165,15 @@ r.plugin.environment <- function(plugin) {
 #' The returned object is a normal external pointer and can be supplied anywhere
 #' a native link external pointer is accepted.
 #'
+#' The optional preparation callback has signature
+#' `prepare(input, control, environment)` and is invoked once before fitting.
 #' The inverse callback has signature
 #' `function(eta, link.parameters, environment)` and returns `mu`.
 #' The gradient callback has the same arguments and returns a list containing
 #' `d_mu_d_eta` and `d_mu_d_link_parameters`.
 #'
 #' @param name Non-empty link name.
+#' @param prepare Optional one-time preparation callback.
 #' @param inverse R inverse-link callback.
 #' @param grad R gradient callback.
 #' @param initial.parameters Numeric vector of initial link parameters.
@@ -183,9 +194,11 @@ r.link <- function(
     initial.parameters = numeric(),
     lower.bounds = NULL,
     upper.bounds = NULL,
-    environment = NULL
+    environment = NULL,
+    prepare = NULL
 ) {
   name <- .r.scalar.string(name, "name")
+  prepare <- .r.prepare.callback(prepare)
   inverse <- .r.callback(inverse, "inverse")
   grad <- .r.callback(grad, "grad")
   metadata <- .r.parameter.metadata(
@@ -198,6 +211,7 @@ r.link <- function(
 
   pointer <- create_r_link(
     name = name,
+    prepare = prepare,
     inverse = inverse,
     grad = grad,
     initial_parameters = metadata$initial,
@@ -211,7 +225,7 @@ r.link <- function(
     type = "link",
     name = name,
     environment = environment,
-    callbacks = list(inverse = inverse, grad = grad)
+    callbacks = list(prepare = prepare, inverse = inverse, grad = grad)
   )
 }
 
@@ -219,11 +233,13 @@ r.link <- function(
 #'
 #' @description
 #' Wraps R functions in the built-in C++ child of `IEcountgmifsFamily`.
+#' `prepare(input, control, environment)` is invoked once before fitting.
 #' `negloglik(y, mu, family.parameters, environment)` returns one negative
 #' log-likelihood value. `grad()` returns a list containing
 #' `d_negloglik_d_mu` and `d_negloglik_d_family_parameters`.
 #'
 #' @param name Non-empty family name.
+#' @param prepare Optional one-time preparation callback.
 #' @param negloglik R negative-log-likelihood callback.
 #' @param grad R gradient callback.
 #' @param initial.parameters Numeric vector of initial family parameters.
@@ -243,9 +259,11 @@ r.family <- function(
     initial.parameters = numeric(),
     lower.bounds = NULL,
     upper.bounds = NULL,
-    environment = NULL
+    environment = NULL,
+    prepare = NULL
 ) {
   name <- .r.scalar.string(name, "name")
+  prepare <- .r.prepare.callback(prepare)
   negloglik <- .r.callback(negloglik, "negloglik")
   grad <- .r.callback(grad, "grad")
   metadata <- .r.parameter.metadata(
@@ -258,6 +276,7 @@ r.family <- function(
 
   pointer <- create_r_family(
     name = name,
+    prepare = prepare,
     negloglik = negloglik,
     grad = grad,
     initial_parameters = metadata$initial,
@@ -271,7 +290,7 @@ r.family <- function(
     type = "family",
     name = name,
     environment = environment,
-    callbacks = list(negloglik = negloglik, grad = grad)
+    callbacks = list(prepare = prepare, negloglik = negloglik, grad = grad)
   )
 }
 
@@ -283,12 +302,14 @@ r.family <- function(
 #' `d_negloglik_d_eta` directly and can therefore avoid the ordinary separated
 #' family/link chain rule.
 #'
+#' `prepare(input, control, environment)` is invoked once before fitting.
 #' `inverse(eta, link.parameters, environment)` returns `mu`.
 #' `negloglik(y, mu, family.parameters, environment)` returns one value.
 #' `grad(y, eta, mu, family.parameters, link.parameters, environment)` returns
 #' all six derivative objects required by `IEcountgmifsFamilyLink`.
 #'
 #' @param family.name,link.name Non-empty names.
+#' @param prepare Optional one-time preparation callback.
 #' @param inverse,negloglik,grad R callbacks.
 #' @param family.initial.parameters,link.initial.parameters Initial parameters.
 #' @param family.lower.bounds,family.upper.bounds Family-parameter bounds.
@@ -311,10 +332,12 @@ r.family.link <- function(
     link.initial.parameters = numeric(),
     link.lower.bounds = NULL,
     link.upper.bounds = NULL,
-    environment = NULL
+    environment = NULL,
+    prepare = NULL
 ) {
   family.name <- .r.scalar.string(family.name, "family.name")
   link.name <- .r.scalar.string(link.name, "link.name")
+  prepare <- .r.prepare.callback(prepare)
   inverse <- .r.callback(inverse, "inverse")
   negloglik <- .r.callback(negloglik, "negloglik")
   grad <- .r.callback(grad, "grad")
@@ -336,6 +359,7 @@ r.family.link <- function(
   pointer <- create_r_family_link(
     family_name = family.name,
     link_name = link.name,
+    prepare = prepare,
     inverse = inverse,
     negloglik = negloglik,
     grad = grad,
@@ -353,7 +377,12 @@ r.family.link <- function(
     type = "family.link",
     name = paste(family.name, link.name, sep = "/"),
     environment = environment,
-    callbacks = list(inverse = inverse, negloglik = negloglik, grad = grad)
+    callbacks = list(
+      prepare = prepare,
+      inverse = inverse,
+      negloglik = negloglik,
+      grad = grad
+    )
   )
 }
 
@@ -361,7 +390,9 @@ r.family.link <- function(
 #'
 #' @description
 #' Wraps `evaluate(input, control, state, environment)` in the built-in C++
-#' child of `IEcountgmifsCriterion`. The first three arguments are named R lists
+#' child of `IEcountgmifsCriterion`. An optional
+#' `prepare(input, control, environment)` callback is invoked once before
+#' fitting. The first three evaluation arguments are named R lists
 #' representing simplified read-only views of the corresponding public C++ API
 #' objects. The environment is the same object retained at construction.
 #'
@@ -385,6 +416,7 @@ r.family.link <- function(
 #' `iteration`, `pseudo_r2`, and `elapsed_time`.
 #'
 #' @param name Non-empty criterion name.
+#' @param prepare Optional one-time preparation callback.
 #' @param evaluate R criterion callback returning one numeric value.
 #' @param environment Retained explicit auxiliary environment or named list.
 #'
@@ -392,13 +424,15 @@ r.family.link <- function(
 #' @export
 #' @family R callback plugins
 #' @seealso [custom.plugins], [information.criteria]
-r.criterion <- function(name, evaluate, environment = NULL) {
+r.criterion <- function(name, evaluate, environment = NULL, prepare = NULL) {
   name <- .r.scalar.string(name, "name")
+  prepare <- .r.prepare.callback(prepare)
   evaluate <- .r.callback(evaluate, "evaluate")
   environment <- .r.as.environment(environment)
 
   pointer <- create_r_criterion(
     name = name,
+    prepare = prepare,
     evaluate = evaluate,
     environment = environment
   )
@@ -408,7 +442,7 @@ r.criterion <- function(name, evaluate, environment = NULL) {
     type = "criterion",
     name = name,
     environment = environment,
-    callbacks = list(evaluate = evaluate)
+    callbacks = list(prepare = prepare, evaluate = evaluate)
   )
 }
 

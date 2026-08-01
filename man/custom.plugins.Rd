@@ -5,26 +5,26 @@
 \alias{custom-plugins}
 \title{Custom family, link, family-link, and criterion plugins}
 \description{
-\code{ecountgmifs} accepts external pointers implementing one of four public C++
-interfaces. The same mathematical component may be supplied as package-built
-C++, live-compiled C++, an R callback with explicit environment data, or an R
-callback whose auxiliary inputs are captured by a closure.
+\code{ecountgmifs} consumes ordinary owning external pointers to four public C++
+interfaces. The fitting core does not branch on whether an implementation is
+package-built C++, live-compiled C++, or an R callback adapter.
 
-The implementation pages are:
-\itemize{
-\item \link{custom.plugins.builtin} for C++ compiled with the package;
-\item \link{custom.plugins.live} for C++ compiled during the R session;
-\item \link{custom.plugins.r.environment} for callbacks with explicit retained data;
-\item \link{custom.plugins.r.closure} for callbacks capturing factory arguments.
-}
+The implementation pages are \link{custom.plugins.builtin},
+\link{custom.plugins.live}, \link{custom.plugins.r.environment}, and
+\link{custom.plugins.r.closure}. Component-specific pages are \link{link.plugins},
+\link{family.plugins}, \link{family.link.plugins}, and \link{information.criteria}.
 
-The component pages are \link{link.plugins}, \link{family.plugins},
-\link{family.link.plugins}, and \link{information.criteria}.
+Public example constructors use the S3-safe dotted pattern
+\verb{plugin.<component>.<implementation>.<variant>()}, for example
+\code{plugin.link.log.builtin()}, \code{plugin.family.nb2.live()},
+\code{plugin.family.link.nb2.log.r.environment()}, and
+\code{plugin.criterion.AIC.nnz.r.closure()}. The shared \code{plugin} prefix avoids
+accidental registration as methods for base generics such as \code{AIC()},
+\code{BIC()}, \code{log()}, and \code{family()}.
 }
 \section{Complete public link interface}{
 
-This is the complete \code{IEcountgmifsLinkFunc} declaration from
-\code{inst/include/ecountgmifs/api.h}:
+Copied verbatim from \code{inst/include/ecountgmifs/api.h}:
 
 \if{html}{\out{<div class="sourceCode cpp">}}\preformatted{struct IEcountgmifsLinkFunc
 \{
@@ -33,6 +33,11 @@ This is the complete \code{IEcountgmifsLinkFunc} declaration from
   virtual std::string name() const = 0;
 
   virtual arma::uword parameter_count() const noexcept = 0;
+
+  virtual void prepare(
+      const EcountgmifsInput& input,
+      const EcountgmifsControl& control
+  ) const = 0;
 
   virtual void inverse(
       const arma::vec& eta,
@@ -71,7 +76,7 @@ This is the complete \code{IEcountgmifsLinkFunc} declaration from
 
 \section{Complete public family interface}{
 
-This is the complete \code{IEcountgmifsFamily} declaration:
+Copied verbatim from \code{inst/include/ecountgmifs/api.h}:
 
 \if{html}{\out{<div class="sourceCode cpp">}}\preformatted{struct IEcountgmifsFamily
 \{
@@ -80,6 +85,11 @@ This is the complete \code{IEcountgmifsFamily} declaration:
   virtual std::string name() const = 0;
 
   virtual arma::uword parameter_count() const noexcept = 0;
+
+  virtual void prepare(
+      const EcountgmifsInput& input,
+      const EcountgmifsControl& control
+  ) const = 0;
 
   virtual void negloglik(
       const arma::vec& y,
@@ -120,7 +130,7 @@ This is the complete \code{IEcountgmifsFamily} declaration:
 
 \section{Complete public fused family-link interface}{
 
-This is the complete \code{IEcountgmifsFamilyLink} declaration:
+Copied verbatim from \code{inst/include/ecountgmifs/api.h}:
 
 \if{html}{\out{<div class="sourceCode cpp">}}\preformatted{struct IEcountgmifsFamilyLink
 \{
@@ -176,6 +186,11 @@ This is the complete \code{IEcountgmifsFamilyLink} declaration:
     return upper;
   \}
 
+  virtual void prepare(
+      const EcountgmifsInput& input,
+      const EcountgmifsControl& control
+  ) const = 0;
+
   virtual void inverse(
       const arma::vec& eta,
       const arma::vec& link_parameters,
@@ -189,6 +204,13 @@ This is the complete \code{IEcountgmifsFamilyLink} declaration:
       double& negloglik
   ) const = 0;
 
+  /*
+   * Fill all derivatives needed by the fitting code.
+   *
+   * d_negloglik_d_eta is the derivative used for beta and theta. A custom
+   * combined implementation may calculate it directly rather than as
+   * d_negloglik_d_mu \% d_mu_d_eta.
+   */
   virtual void grad(
       const arma::vec& y,
       const arma::vec& eta,
@@ -208,13 +230,18 @@ This is the complete \code{IEcountgmifsFamilyLink} declaration:
 
 \section{Complete public criterion interface}{
 
-This is the complete \code{IEcountgmifsCriterion} declaration:
+Copied verbatim from \code{inst/include/ecountgmifs/api.h}:
 
 \if{html}{\out{<div class="sourceCode cpp">}}\preformatted{struct IEcountgmifsCriterion
 \{
   virtual ~IEcountgmifsCriterion() = default;
 
   virtual std::string name() const = 0;
+
+  virtual void prepare(
+      const EcountgmifsInput& input,
+      const EcountgmifsControl& control
+  ) const = 0;
 
   virtual double evaluate(
       const EcountgmifsInput& input,
@@ -225,13 +252,17 @@ This is the complete \code{IEcountgmifsCriterion} declaration:
 }\if{html}{\out{</div>}}
 }
 
-\section{Auxiliary values and optimized parameters}{
+\section{Parameter and auxiliary-data categories}{
 
-Fixed clamps, fallback thresholds, external matrices, and criterion
-hyperparameters belong to the plugin object. Native C++ stores them as class
-members. R callbacks either store them in one explicit environment or capture
-them in a closure. Values optimized by the fitter must instead be declared as
-family or link parameters and are supplied on every callback invocation.
+An optimized parameter is owned by the fitter and passed through
+\code{family_parameters} or \code{link_parameters}; it therefore requires an initial
+value and bounds. Fixed immutable configuration, such as caps or EBIC
+\code{gamma}, belongs to the plugin object, explicit environment, or closure.
+Large retained auxiliary data, such as test matrices, should be stored once
+in the object/environment/closure rather than passed on every call.
+Fit-specific derived data can be initialized once by \code{prepare()}. Mutable
+shared state, such as counters or caches, is best placed in an explicit
+environment because it is inspectable, but it is not thread-safe.
 }
 
 \seealso{

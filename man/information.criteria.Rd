@@ -3,127 +3,139 @@
 \name{information.criteria}
 \alias{information.criteria}
 \alias{information-criteria}
-\alias{AIC.builtin}
-\alias{AIC.live}
-\alias{AIC.r.environment}
-\alias{AIC.r.closure}
-\alias{BIC.builtin}
-\alias{BIC.live}
-\alias{BIC.r.environment}
-\alias{BIC.r.closure}
-\alias{EBIC.builtin}
-\alias{EBIC.live}
-\alias{EBIC.r.environment}
-\alias{EBIC.r.closure}
-\alias{AIC.nnz.builtin}
-\alias{AIC.nnz.live}
-\alias{AIC.nnz.r.environment}
-\alias{AIC.nnz.r.closure}
-\alias{BIC.nnz.builtin}
-\alias{BIC.nnz.live}
-\alias{BIC.nnz.r.environment}
-\alias{BIC.nnz.r.closure}
-\alias{SABIC.nnz.builtin}
-\alias{SABIC.nnz.live}
-\alias{SABIC.nnz.r.environment}
-\alias{SABIC.nnz.r.closure}
-\alias{AIC.hedf.builtin}
-\alias{AIC.hedf.live}
-\alias{AIC.hedf.r.environment}
-\alias{AIC.hedf.r.closure}
-\alias{BIC.hedf.builtin}
-\alias{BIC.hedf.live}
-\alias{BIC.hedf.r.environment}
-\alias{BIC.hedf.r.closure}
-\alias{SABIC.hedf.builtin}
-\alias{SABIC.hedf.live}
-\alias{SABIC.hedf.r.environment}
-\alias{SABIC.hedf.r.closure}
 \alias{AIC_nnz}
 \alias{BIC_nnz}
 \alias{SABIC_nnz}
 \alias{AIC_hedf}
 \alias{BIC_hedf}
 \alias{SABIC_hedf}
+\alias{plugin.criterion.AIC.builtin}
+\alias{plugin.criterion.AIC.live}
+\alias{plugin.criterion.AIC.r.environment}
+\alias{plugin.criterion.AIC.r.closure}
+\alias{plugin.criterion.BIC.builtin}
+\alias{plugin.criterion.BIC.live}
+\alias{plugin.criterion.BIC.r.environment}
+\alias{plugin.criterion.BIC.r.closure}
+\alias{plugin.criterion.SABIC.builtin}
+\alias{plugin.criterion.SABIC.live}
+\alias{plugin.criterion.SABIC.r.environment}
+\alias{plugin.criterion.SABIC.r.closure}
+\alias{plugin.criterion.EBIC.builtin}
+\alias{plugin.criterion.EBIC.live}
+\alias{plugin.criterion.EBIC.r.environment}
+\alias{plugin.criterion.EBIC.r.closure}
+\alias{plugin.criterion.AIC.nnz.builtin}
+\alias{plugin.criterion.AIC.nnz.live}
+\alias{plugin.criterion.AIC.nnz.r.environment}
+\alias{plugin.criterion.AIC.nnz.r.closure}
+\alias{plugin.criterion.BIC.nnz.builtin}
+\alias{plugin.criterion.BIC.nnz.live}
+\alias{plugin.criterion.BIC.nnz.r.environment}
+\alias{plugin.criterion.BIC.nnz.r.closure}
+\alias{plugin.criterion.SABIC.nnz.builtin}
+\alias{plugin.criterion.SABIC.nnz.live}
+\alias{plugin.criterion.SABIC.nnz.r.environment}
+\alias{plugin.criterion.SABIC.nnz.r.closure}
+\alias{plugin.criterion.AIC.hedf.builtin}
+\alias{plugin.criterion.AIC.hedf.live}
+\alias{plugin.criterion.AIC.hedf.r.environment}
+\alias{plugin.criterion.AIC.hedf.r.closure}
+\alias{plugin.criterion.BIC.hedf.builtin}
+\alias{plugin.criterion.BIC.hedf.live}
+\alias{plugin.criterion.BIC.hedf.r.environment}
+\alias{plugin.criterion.BIC.hedf.r.closure}
+\alias{plugin.criterion.SABIC.hedf.builtin}
+\alias{plugin.criterion.SABIC.hedf.live}
+\alias{plugin.criterion.SABIC.hedf.r.environment}
+\alias{plugin.criterion.SABIC.hedf.r.closure}
 \alias{example.aic.criterion}
 \alias{example.bic.criterion}
 \alias{example.r.aic.criterion}
 \alias{example.r.bic.criterion}
 \alias{example.r.ebic.criterion.environment}
 \alias{example.r.ebic.criterion.closure}
-\title{Information-criterion examples in four implementation variants}
+\title{Information criteria in four implementation variants}
 \usage{
-\method{AIC}{builtin}()
+plugin.criterion.AIC.builtin()
 
-\method{AIC}{live}(cache = TRUE)
+plugin.criterion.AIC.live(cache = TRUE)
 
-\method{AIC}{r.environment}()
+plugin.criterion.AIC.r.environment()
 
-\method{AIC}{r.closure}()
+plugin.criterion.AIC.r.closure()
 
-\method{BIC}{builtin}()
+plugin.criterion.BIC.builtin()
 
-\method{BIC}{live}(cache = TRUE)
+plugin.criterion.BIC.live(cache = TRUE)
 
-\method{BIC}{r.environment}()
+plugin.criterion.BIC.r.environment()
 
-\method{BIC}{r.closure}()
+plugin.criterion.BIC.r.closure()
 
-EBIC.builtin(gamma = 0.5)
+plugin.criterion.SABIC.builtin()
 
-EBIC.live(gamma = 0.5, cache = TRUE)
+plugin.criterion.SABIC.live(cache = TRUE)
 
-EBIC.r.environment(gamma = 0.5)
+plugin.criterion.SABIC.r.environment()
 
-EBIC.r.closure(gamma = 0.5)
+plugin.criterion.SABIC.r.closure()
 
-\method{AIC}{nnz.builtin}()
+plugin.criterion.EBIC.builtin(gamma = 0.5)
 
-\method{AIC}{nnz.live}(cache = TRUE)
+plugin.criterion.EBIC.live(gamma = 0.5, cache = TRUE)
 
-\method{AIC}{nnz.r.environment}()
+plugin.criterion.EBIC.r.environment(gamma = 0.5)
 
-\method{AIC}{nnz.r.closure}()
+plugin.criterion.EBIC.r.closure(gamma = 0.5)
 
-\method{BIC}{nnz.builtin}()
+plugin.criterion.AIC.nnz.builtin()
 
-\method{BIC}{nnz.live}(cache = TRUE)
+plugin.criterion.AIC.nnz.live(cache = TRUE)
 
-\method{BIC}{nnz.r.environment}()
+plugin.criterion.AIC.nnz.r.environment()
 
-\method{BIC}{nnz.r.closure}()
+plugin.criterion.AIC.nnz.r.closure()
 
-SABIC.nnz.builtin()
+plugin.criterion.BIC.nnz.builtin()
 
-SABIC.nnz.live(cache = TRUE)
+plugin.criterion.BIC.nnz.live(cache = TRUE)
 
-SABIC.nnz.r.environment()
+plugin.criterion.BIC.nnz.r.environment()
 
-SABIC.nnz.r.closure()
+plugin.criterion.BIC.nnz.r.closure()
 
-\method{AIC}{hedf.builtin}()
+plugin.criterion.SABIC.nnz.builtin()
 
-\method{AIC}{hedf.live}(cache = TRUE)
+plugin.criterion.SABIC.nnz.live(cache = TRUE)
 
-\method{AIC}{hedf.r.environment}()
+plugin.criterion.SABIC.nnz.r.environment()
 
-\method{AIC}{hedf.r.closure}()
+plugin.criterion.SABIC.nnz.r.closure()
 
-\method{BIC}{hedf.builtin}()
+plugin.criterion.AIC.hedf.builtin()
 
-\method{BIC}{hedf.live}(cache = TRUE)
+plugin.criterion.AIC.hedf.live(cache = TRUE)
 
-\method{BIC}{hedf.r.environment}()
+plugin.criterion.AIC.hedf.r.environment()
 
-\method{BIC}{hedf.r.closure}()
+plugin.criterion.AIC.hedf.r.closure()
 
-SABIC.hedf.builtin()
+plugin.criterion.BIC.hedf.builtin()
 
-SABIC.hedf.live(cache = TRUE)
+plugin.criterion.BIC.hedf.live(cache = TRUE)
 
-SABIC.hedf.r.environment()
+plugin.criterion.BIC.hedf.r.environment()
 
-SABIC.hedf.r.closure()
+plugin.criterion.BIC.hedf.r.closure()
+
+plugin.criterion.SABIC.hedf.builtin()
+
+plugin.criterion.SABIC.hedf.live(cache = TRUE)
+
+plugin.criterion.SABIC.hedf.r.environment()
+
+plugin.criterion.SABIC.hedf.r.closure()
 
 AIC_nnz(cache = TRUE)
 
@@ -150,65 +162,83 @@ example.r.ebic.criterion.environment(gamma = 0.5)
 example.r.ebic.criterion.closure(gamma = 0.5)
 }
 \arguments{
-\item{cache}{Reuse the identical live-compiled C++ criterion in the current
-R session.}
+\item{cache}{Reuse an identical live-compiled criterion in the current R
+session.}
 
-\item{gamma}{Non-negative EBIC hyperparameter.}
+\item{gamma}{Finite non-negative EBIC hyperparameter.}
 }
 \value{
 An external pointer to an \code{IEcountgmifsCriterion} child.
 }
 \description{
-These constructors expose the same information-criterion formulas through
-four interchangeable plugin implementations:
-\itemize{
-\item \code{.builtin}: a C++ child compiled with the package and defined in
-\code{src/example.h};
-\item \code{.live}: the same kind of C++ child compiled during the R session and
-cached by \code{\link[=compile.criterion]{compile.criterion()}};
-\item \code{.r.environment}: the built-in generic C++ callback child calling an R
-function whose fixed settings are retained in an explicit environment;
-\item \code{.r.closure}: the same callback child calling an R function that captures
-the outer factory arguments lexically.
-}
+Every criterion on this page is available as package-built C++,
+live-compiled C++, an R callback with explicit environment data, and an R
+callback using closure-captured data. Constructors use the common pattern
+\verb{plugin.criterion.<name>[.<df>].<variant>()}. The leading \code{plugin}
+namespace keeps constructor names from being misregistered as S3 methods for
+the base \code{AIC()} and \code{BIC()} generics.
 
-All constructors return external pointers accepted directly in the
-\code{criteria} argument of \code{\link[=ecountgmifs]{ecountgmifs()}}. The variants are demonstrations of
-the plugin API. Built-in C++ is intended for normal high-performance use;
-live C++ is intended for custom compiled implementations; R variants favor
-modularity and ease of prototyping over speed.
+The implementation suffixes are:
+\itemize{
+\item \code{.builtin}: native C++ compiled with the package;
+\item \code{.live}: C++ compiled by \code{\link[=compile.criterion]{compile.criterion()}} in the current session;
+\item \code{.r.environment}: an R callback retaining explicit environment data;
+\item \code{.r.closure}: an R callback retaining fixed values lexically.
+}
 }
 \section{Degrees of freedom}{
 
-The ordinary AIC, BIC, and EBIC functions use
-\verb{NNZ + length(theta) + length(family parameters) + length(link parameters)}.
-The \code{.nnz.} functions use only the number of nonzero penalized coefficients.
-The \code{.hedf.} functions use \code{NNZ * n / p}.
+Let \code{NNZ} be the number of nonzero penalized coefficients. The implemented
+definitions are:
+\itemize{
+\item full: \code{NNZ + length(theta) + length(family_parameters) + length(link_parameters)};
+\item nnz: \code{NNZ};
+\item hedf: \code{NNZ * n / p}.
 }
 
-\section{Criteria}{
+Full-count constructors are provided for AIC, BIC, SABIC, and EBIC. NNZ and
+HEDF constructors are provided for AIC, BIC, and SABIC.
+}
 
-Let \code{L} denote negative log-likelihood and \code{df} the selected complexity
-definition. The implemented criteria are
-\deqn{AIC = 2L + 2df,}
-\deqn{BIC = 2L + \log(n)df,}
-\deqn{SABIC = 2L + \log((n + 2)/24)df,}
+\section{Formulas}{
+
+With negative log-likelihood \code{L} and selected complexity \code{df},
+\\deqn{AIC = 2L + 2df,}
+\\deqn{BIC = 2L + \\log(n)df,}
+\\deqn{SABIC = 2L + \\log((n + 2)/24)df,}
 and
-\deqn{EBIC = 2L + \log(n)df + 2\gamma\log {p \choose NNZ}.}
+\\deqn{EBIC = 2L + \\log(n)df + 2\\gamma\\log {p \\choose NNZ}.}
+}
 
-The page provides AIC and BIC with the full parameter count, EBIC with
-configurable \code{gamma}, and AIC/BIC/SABIC under the NNZ and HEDF definitions.
-The old underscore functions (\code{AIC_nnz()}, \code{BIC_nnz()}, and so on) remain
-compatibility aliases for the corresponding live-compiled variants.
+\section{Historical compatibility}{
+
+\code{\link[=AIC_nnz]{AIC_nnz()}}, \code{\link[=BIC_nnz]{BIC_nnz()}}, \code{\link[=SABIC_nnz]{SABIC_nnz()}}, \code{\link[=AIC_hedf]{AIC_hedf()}}, \code{\link[=BIC_hedf]{BIC_hedf()}}, and
+\code{\link[=SABIC_hedf]{SABIC_hedf()}} remain aliases to the corresponding \code{.live} constructors.
+They therefore retain the historical live-compilation behavior rather than
+using R callback adapters.
 }
 
 \examples{
 criteria <- list(
-  AIC = AIC.builtin(),
-  BIC.nnz = BIC.nnz.live(),
-  SABIC.hedf.environment = SABIC.hedf.r.environment(),
-  EBIC.closure = EBIC.r.closure(gamma = 0.5)
+  AIC = plugin.criterion.AIC.builtin(),
+  BIC.nnz = plugin.criterion.BIC.nnz.live(),
+  SABIC.hedf.environment = plugin.criterion.SABIC.hedf.r.environment(),
+  EBIC.closure = plugin.criterion.EBIC.r.closure(gamma = 0.5)
 )
+
+\dontrun{
+set.seed(1)
+X <- matrix(rnorm(80), 20, 4)
+y <- rpois(20, lambda = 2)
+fit <- ecountgmifs(
+  X = X,
+  y = y,
+  family = plugin.family.poisson.builtin(),
+  link = plugin.link.log.builtin(),
+  criteria = criteria,
+  control = ecountgmifs.control(stagewise.iteration.max = 20L)
+)
+}
 
 }
 \seealso{

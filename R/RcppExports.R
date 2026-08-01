@@ -37,19 +37,35 @@ example_create_information_criterion <- function(name, penalty_type, df_type, ga
     .Call(`_ecountgmifs_example_create_information_criterion`, name, penalty_type, df_type, gamma)
 }
 
-create_r_link <- function(name, inverse, grad, initial_parameters, lower_bounds, upper_bounds, environment) {
-    .Call(`_ecountgmifs_create_r_link`, name, inverse, grad, initial_parameters, lower_bounds, upper_bounds, environment)
+create_r_link <- function(name, prepare, inverse, grad, initial_parameters, lower_bounds, upper_bounds, environment) {
+    .Call(`_ecountgmifs_create_r_link`, name, prepare, inverse, grad, initial_parameters, lower_bounds, upper_bounds, environment)
 }
 
-create_r_family <- function(name, negloglik, grad, initial_parameters, lower_bounds, upper_bounds, environment) {
-    .Call(`_ecountgmifs_create_r_family`, name, negloglik, grad, initial_parameters, lower_bounds, upper_bounds, environment)
+create_r_family <- function(name, prepare, negloglik, grad, initial_parameters, lower_bounds, upper_bounds, environment) {
+    .Call(`_ecountgmifs_create_r_family`, name, prepare, negloglik, grad, initial_parameters, lower_bounds, upper_bounds, environment)
 }
 
-create_r_family_link <- function(family_name, link_name, inverse, negloglik, grad, family_initial_parameters, family_lower_bounds, family_upper_bounds, link_initial_parameters, link_lower_bounds, link_upper_bounds, environment) {
-    .Call(`_ecountgmifs_create_r_family_link`, family_name, link_name, inverse, negloglik, grad, family_initial_parameters, family_lower_bounds, family_upper_bounds, link_initial_parameters, link_lower_bounds, link_upper_bounds, environment)
+create_r_family_link <- function(family_name, link_name, prepare, inverse, negloglik, grad, family_initial_parameters, family_lower_bounds, family_upper_bounds, link_initial_parameters, link_lower_bounds, link_upper_bounds, environment) {
+    .Call(`_ecountgmifs_create_r_family_link`, family_name, link_name, prepare, inverse, negloglik, grad, family_initial_parameters, family_lower_bounds, family_upper_bounds, link_initial_parameters, link_lower_bounds, link_upper_bounds, environment)
 }
 
-create_r_criterion <- function(name, evaluate, environment) {
-    .Call(`_ecountgmifs_create_r_criterion`, name, evaluate, environment)
+create_r_criterion <- function(name, prepare, evaluate, environment) {
+    .Call(`_ecountgmifs_create_r_criterion`, name, prepare, evaluate, environment)
+}
+
+inspect_link_plugin <- function(pointer) {
+    .Call(`_ecountgmifs_inspect_link_plugin`, pointer)
+}
+
+inspect_family_plugin <- function(pointer) {
+    .Call(`_ecountgmifs_inspect_family_plugin`, pointer)
+}
+
+inspect_family_link_plugin <- function(pointer) {
+    .Call(`_ecountgmifs_inspect_family_link_plugin`, pointer)
+}
+
+inspect_criterion_plugin <- function(pointer) {
+    .Call(`_ecountgmifs_inspect_criterion_plugin`, pointer)
 }
 

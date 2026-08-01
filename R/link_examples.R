@@ -13,6 +13,11 @@
     "public:",
     "  std::string name() const override { return \"Log.live\"; }",
     "  arma::uword parameter_count() const noexcept override { return 0; }",
+    "  void prepare(const EcountgmifsInput& input, const EcountgmifsControl& control) const override",
+    "  {",
+    "    (void) input;",
+    "    (void) control;",
+    "  }",
     "",
     "  void inverse(",
     "      const arma::vec& eta,",
@@ -79,6 +84,11 @@
     "  arma::uword parameter_count() const noexcept override { return 1; }",
     "  arma::vec initial_parameters() const override { return arma::vec({1.0}); }",
     "  arma::vec parameter_lower_bounds() const override { return arma::vec({1e-8}); }",
+    "  void prepare(const EcountgmifsInput& input, const EcountgmifsControl& control) const override",
+    "  {",
+    "    (void) input;",
+    "    (void) control;",
+    "  }",
     "",
     "  void inverse(const arma::vec& eta, const arma::vec& parameters, arma::vec& mu) const override",
     "  {",
@@ -120,7 +130,9 @@
 #'
 #' @description
 #' A link plugin represents the inverse link `mu = g^{-1}(eta)` and its
-#' derivatives. [r.link()] callbacks have signatures
+#' derivatives. [r.link()] optionally invokes
+#' `prepare(input, control, environment)` once before fitting. Its evaluation
+#' callbacks have signatures
 #' `inverse(eta, link.parameters, environment)` and
 #' `grad(eta, link.parameters, environment)`.
 #'

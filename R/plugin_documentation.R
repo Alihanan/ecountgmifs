@@ -33,6 +33,11 @@
 #'
 #'   virtual arma::uword parameter_count() const noexcept = 0;
 #'
+#'   virtual void prepare(
+#'       const EcountgmifsInput& input,
+#'       const EcountgmifsControl& control
+#'   ) const = 0;
+#'
 #'   virtual void inverse(
 #'       const arma::vec& eta,
 #'       const arma::vec& link_parameters,
@@ -78,6 +83,11 @@
 #'   virtual std::string name() const = 0;
 #'
 #'   virtual arma::uword parameter_count() const noexcept = 0;
+#'
+#'   virtual void prepare(
+#'       const EcountgmifsInput& input,
+#'       const EcountgmifsControl& control
+#'   ) const = 0;
 #'
 #'   virtual void negloglik(
 #'       const arma::vec& y,
@@ -173,6 +183,11 @@
 #'     return upper;
 #'   }
 #'
+#'   virtual void prepare(
+#'       const EcountgmifsInput& input,
+#'       const EcountgmifsControl& control
+#'   ) const = 0;
+#'
 #'   virtual void inverse(
 #'       const arma::vec& eta,
 #'       const arma::vec& link_parameters,
@@ -219,6 +234,11 @@
 #'
 #'   virtual std::string name() const = 0;
 #'
+#'   virtual void prepare(
+#'       const EcountgmifsInput& input,
+#'       const EcountgmifsControl& control
+#'   ) const = 0;
+#'
 #'   virtual double evaluate(
 #'       const EcountgmifsInput& input,
 #'       const EcountgmifsControl& control,
@@ -233,7 +253,8 @@
 #' value and bounds. Fixed immutable configuration, such as caps or EBIC
 #' `gamma`, belongs to the plugin object, explicit environment, or closure.
 #' Large retained auxiliary data, such as test matrices, should be stored once
-#' in the object/environment/closure rather than passed on every call. Mutable
+#' in the object/environment/closure rather than passed on every call.
+#' Fit-specific derived data can be initialized once by `prepare()`. Mutable
 #' shared state, such as counters or caches, is best placed in an explicit
 #' environment because it is inspectable, but it is not thread-safe.
 #'
@@ -253,11 +274,14 @@ NULL
 #' implementations and do not enter the R interpreter during fitting.
 #'
 #' Built-in examples include log and softplus links, Poisson and NB2 families,
-#' the fused NB2-log family-link, and information criteria. Constructors are
+#' the fused NB2-log family-link, and information criteria. Before fitting, the
+#' core calls `prepare(input, control)` once. NB2 uses this hook to cache
+#' `lgamma(y + 1)` for repeated likelihood evaluations. Constructors are
 #' documented on [link.plugins], [family.plugins], [family.link.plugins], and
-#' [information.criteria]. Native plugin objects are immutable after
-#' construction and are safe for concurrent read-only evaluation provided the
-#' implementation itself does not introduce mutable shared state.
+#' [information.criteria]. Constructor configuration is immutable, but
+#' `prepare()` may populate a mutable fit-specific cache. Consequently, a
+#' cache-bearing plugin pointer such as NB2 must not be shared by concurrent
+#' fits; separate plugin objects are safe.
 #'
 #' @examples
 #' \dontrun{
@@ -306,13 +330,16 @@ NULL
 #' [compile.link()], [compile.family()], [compile.family.link()], and
 #' [compile.criterion()] call `Rcpp::sourceCpp()`, invoke the exported R factory
 #' directly, validate the returned interface metadata, and cache the result.
+#' Every derived class must override `prepare(input, control)`, using a no-op
+#' implementation when no one-time setup is required.
 #' File-based variants read a complete `.cpp` file and use the same path.
 #'
 #' The source must include the public API and all dependencies needed by
 #' `api.h`. Live C++ has native evaluation speed after the one-time compilation
 #' cost. A live plugin must not retain references to temporary R objects unless
-#' it explicitly preserves them. Pure native implementations are suitable for
-#' concurrent read-only evaluation; implementations that call R are not.
+#' it explicitly preserves them. A plugin with mutable data prepared per fit
+#' must not be shared by concurrent fits; implementations that call R must also
+#' remain on the R main thread.
 #'
 #' @examples
 #' \dontrun{
@@ -331,6 +358,11 @@ NULL
 #'   "  ~UserLogLink() override = default;",
 #'   "  std::string name() const override { return \"UserLog\"; }",
 #'   "  arma::uword parameter_count() const noexcept override { return 0; }",
+#'   "  void prepare(const EcountgmifsInput& input, const EcountgmifsControl& control) const override",
+#'   "  {",
+#'   "    (void) input;",
+#'   "    (void) control;",
+#'   "  }",
 #'   "  void inverse(",
 #'   "      const arma::vec& eta,",
 #'   "      const arma::vec& link_parameters,",
@@ -391,8 +423,10 @@ NULL
 #' @description
 #' [r.link()], [r.family()], [r.family.link()], and [r.criterion()] create
 #' package-compiled C++ adapter children that retain `Rcpp::Function` callbacks
-#' and one `Rcpp::Environment`. Every callback receives that exact environment
-#' as its final argument. This is appropriate for inspectable fixed settings,
+#' and one `Rcpp::Environment`. An optional
+#' `prepare(input, control, environment)` callback runs once before fitting, and
+#' every callback receives that exact environment as its final argument. This
+#' is appropriate for inspectable fixed settings,
 #' large retained data, caches, and deliberately mutable shared state.
 #'
 #' Callbacks are vectorized and are never invoked observation by observation.
@@ -480,8 +514,9 @@ NULL
 #' EBIC `gamma`, or retained test data. Use an explicit environment instead when
 #' state must be inspected or intentionally shared and mutated.
 #'
-#' The compiled adapter still retains the `Rcpp::Function` objects, so their
-#' closure environments remain alive. Calls are vectorized, checked in C++, and
+#' The compiled adapter still retains the `Rcpp::Function` objects, including
+#' an optional one-time `prepare()` callback, so their closure environments
+#' remain alive. Calls are vectorized, checked in C++, and
 #' restricted to the R main thread. Mutation with `<<-` is possible but is less
 #' inspectable and not thread-safe.
 #'

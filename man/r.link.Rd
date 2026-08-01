@@ -11,7 +11,8 @@ r.link(
   initial.parameters = numeric(),
   lower.bounds = NULL,
   upper.bounds = NULL,
-  environment = NULL
+  environment = NULL,
+  prepare = NULL
 )
 }
 \arguments{
@@ -29,6 +30,8 @@ infinite bounds.}
 \item{environment}{\code{NULL}, an environment, or a named list retained by the
 C++ adapter and passed to every callback. Fixed values may instead be
 captured lexically by closures.}
+
+\item{prepare}{Optional one-time preparation callback.}
 }
 \value{
 An external pointer to an \code{IEcountgmifsLinkFunc} implementation.
@@ -38,6 +41,8 @@ Wraps R functions in the built-in C++ child of \code{IEcountgmifsLinkFunc}.
 The returned object is a normal external pointer and can be supplied anywhere
 a native link external pointer is accepted.
 
+The optional preparation callback has signature
+\code{prepare(input, control, environment)} and is invoked once before fitting.
 The inverse callback has signature
 \verb{function(eta, link.parameters, environment)} and returns \code{mu}.
 The gradient callback has the same arguments and returns a list containing

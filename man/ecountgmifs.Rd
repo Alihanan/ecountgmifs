@@ -20,7 +20,8 @@ ecountgmifs(
   fixed.dispersion = FALSE,
   fixed.dispersion.value = 0,
   include.data = FALSE,
-  control = ecountgmifs.control()
+  control = ecountgmifs.control(),
+  family.link = NULL
 )
 }
 \arguments{
@@ -38,15 +39,17 @@ ecountgmifs(
 
 \item{enet.alpha}{Elastic-net mixing parameter in \verb{[0, 1]}.}
 
-\item{family}{Either \code{"negative.binomial"} or \code{"poisson"}.}
+\item{family}{Either \code{"negative.binomial"}, \code{"poisson"}, a family external
+pointer, a zero-argument constructor returning one, or its character name.}
 
 \item{savefolder}{Retained for compatibility; currently unused.}
 
-\item{link}{Either \code{"log"} or \code{"softplus"}.}
+\item{link}{Either \code{"log"}, \code{"softplus"}, a link external pointer, a
+zero-argument constructor returning one, or its character name.}
 
-\item{criteria}{A criterion external pointer, a list of criterion external
-pointers, \code{NULL} for the example AIC/BIC/SABIC set, or an empty list to
-disable criteria.}
+\item{criteria}{A criterion pointer, constructor, character constructor name,
+list of such specifications, \code{NULL} for the built-in AIC/BIC/SABIC set, or
+an empty list to disable criteria.}
 
 \item{verbose}{Logical. Print fitting progress.}
 
@@ -58,6 +61,10 @@ the current plugin interface.}
 \item{include.data}{Logical. Include input data in the result.}
 
 \item{control}{An object returned by \code{\link[=ecountgmifs.control]{ecountgmifs.control()}}.}
+
+\item{family.link}{Optional fused family-link pointer, zero-argument
+constructor, or its character name. When supplied, it takes precedence over
+\code{family} and \code{link}.}
 }
 \value{
 An object of class \code{"ecountgmifs"}.

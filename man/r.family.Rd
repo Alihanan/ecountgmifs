@@ -11,7 +11,8 @@ r.family(
   initial.parameters = numeric(),
   lower.bounds = NULL,
   upper.bounds = NULL,
-  environment = NULL
+  environment = NULL,
+  prepare = NULL
 )
 }
 \arguments{
@@ -28,12 +29,15 @@ infinite bounds.}
 
 \item{environment}{\code{NULL}, an environment, or a named list retained by the
 adapter and passed to every callback.}
+
+\item{prepare}{Optional one-time preparation callback.}
 }
 \value{
 An external pointer to an \code{IEcountgmifsFamily} implementation.
 }
 \description{
 Wraps R functions in the built-in C++ child of \code{IEcountgmifsFamily}.
+\code{prepare(input, control, environment)} is invoked once before fitting.
 \code{negloglik(y, mu, family.parameters, environment)} returns one negative
 log-likelihood value. \code{grad()} returns a list containing
 \code{d_negloglik_d_mu} and \code{d_negloglik_d_family_parameters}.

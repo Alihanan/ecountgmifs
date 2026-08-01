@@ -434,6 +434,7 @@ class RFunctionLink final :
 {
 private:
   std::string name_;
+  Rcpp::Function prepare_;
   Rcpp::Function inverse_;
   Rcpp::Function grad_;
   arma::vec initial_parameters_;
@@ -444,6 +445,7 @@ private:
 public:
   RFunctionLink(
       std::string name,
+      Rcpp::Function prepare,
       Rcpp::Function inverse,
       Rcpp::Function grad,
       arma::vec initial_parameters,
@@ -452,6 +454,7 @@ public:
       Rcpp::Environment environment
   ) :
     name_(std::move(name)),
+    prepare_(prepare),
     inverse_(inverse),
     grad_(grad),
     initial_parameters_(
@@ -495,6 +498,18 @@ public:
     const override
   {
     return upper_bounds_;
+  }
+
+  void prepare(
+      const EcountgmifsInput& input,
+      const EcountgmifsControl& control
+  ) const override
+  {
+    prepare_(
+      input_to_list(input),
+      control_to_list(control),
+      environment_
+    );
   }
 
   void inverse(
@@ -585,6 +600,7 @@ class RFunctionFamily final :
 {
 private:
   std::string name_;
+  Rcpp::Function prepare_;
   Rcpp::Function negloglik_;
   Rcpp::Function grad_;
   arma::vec initial_parameters_;
@@ -595,6 +611,7 @@ private:
 public:
   RFunctionFamily(
       std::string name,
+      Rcpp::Function prepare,
       Rcpp::Function negloglik,
       Rcpp::Function grad,
       arma::vec initial_parameters,
@@ -603,6 +620,7 @@ public:
       Rcpp::Environment environment
   ) :
     name_(std::move(name)),
+    prepare_(prepare),
     negloglik_(negloglik),
     grad_(grad),
     initial_parameters_(
@@ -646,6 +664,18 @@ public:
     const override
   {
     return upper_bounds_;
+  }
+
+  void prepare(
+      const EcountgmifsInput& input,
+      const EcountgmifsControl& control
+  ) const override
+  {
+    prepare_(
+      input_to_list(input),
+      control_to_list(control),
+      environment_
+    );
   }
 
   void negloglik(
@@ -751,6 +781,7 @@ class RFunctionFamilyLink final :
 private:
   std::string family_name_;
   std::string link_name_;
+  Rcpp::Function prepare_;
   Rcpp::Function inverse_;
   Rcpp::Function negloglik_;
   Rcpp::Function grad_;
@@ -766,6 +797,7 @@ public:
   RFunctionFamilyLink(
       std::string family_name,
       std::string link_name,
+      Rcpp::Function prepare,
       Rcpp::Function inverse,
       Rcpp::Function negloglik,
       Rcpp::Function grad,
@@ -779,6 +811,7 @@ public:
   ) :
     family_name_(std::move(family_name)),
     link_name_(std::move(link_name)),
+    prepare_(prepare),
     inverse_(inverse),
     negloglik_(negloglik),
     grad_(grad),
@@ -873,6 +906,18 @@ public:
     const override
   {
     return link_upper_bounds_;
+  }
+
+  void prepare(
+      const EcountgmifsInput& input,
+      const EcountgmifsControl& control
+  ) const override
+  {
+    prepare_(
+      input_to_list(input),
+      control_to_list(control),
+      environment_
+    );
   }
 
   void inverse(
@@ -1084,16 +1129,19 @@ class RFunctionCriterion final :
 {
 private:
   std::string name_;
+  Rcpp::Function prepare_;
   Rcpp::Function evaluate_;
   Rcpp::Environment environment_;
 
 public:
   RFunctionCriterion(
       std::string name,
+      Rcpp::Function prepare,
       Rcpp::Function evaluate,
       Rcpp::Environment environment
   ) :
     name_(std::move(name)),
+    prepare_(prepare),
     evaluate_(evaluate),
     environment_(environment)
   {}
@@ -1101,6 +1149,18 @@ public:
   std::string name() const override
   {
     return name_;
+  }
+
+  void prepare(
+      const EcountgmifsInput& input,
+      const EcountgmifsControl& control
+  ) const override
+  {
+    prepare_(
+      input_to_list(input),
+      control_to_list(control),
+      environment_
+    );
   }
 
   double evaluate(
@@ -1127,6 +1187,7 @@ public:
 // [[Rcpp::export]]
 SEXP create_r_link(
     const std::string& name,
+    Rcpp::Function prepare,
     Rcpp::Function inverse,
     Rcpp::Function grad,
     arma::vec initial_parameters,
@@ -1138,6 +1199,7 @@ SEXP create_r_link(
   return Rcpp::XPtr<IEcountgmifsLinkFunc>(
     new RFunctionLink(
       name,
+      prepare,
       inverse,
       grad,
       std::move(initial_parameters),
@@ -1152,6 +1214,7 @@ SEXP create_r_link(
 // [[Rcpp::export]]
 SEXP create_r_family(
     const std::string& name,
+    Rcpp::Function prepare,
     Rcpp::Function negloglik,
     Rcpp::Function grad,
     arma::vec initial_parameters,
@@ -1163,6 +1226,7 @@ SEXP create_r_family(
   return Rcpp::XPtr<IEcountgmifsFamily>(
     new RFunctionFamily(
       name,
+      prepare,
       negloglik,
       grad,
       std::move(initial_parameters),
@@ -1178,6 +1242,7 @@ SEXP create_r_family(
 SEXP create_r_family_link(
     const std::string& family_name,
     const std::string& link_name,
+    Rcpp::Function prepare,
     Rcpp::Function inverse,
     Rcpp::Function negloglik,
     Rcpp::Function grad,
@@ -1194,6 +1259,7 @@ SEXP create_r_family_link(
     new RFunctionFamilyLink(
       family_name,
       link_name,
+      prepare,
       inverse,
       negloglik,
       grad,
@@ -1212,6 +1278,7 @@ SEXP create_r_family_link(
 // [[Rcpp::export]]
 SEXP create_r_criterion(
     const std::string& name,
+    Rcpp::Function prepare,
     Rcpp::Function evaluate,
     Rcpp::Environment environment
 )
@@ -1219,6 +1286,7 @@ SEXP create_r_criterion(
   return Rcpp::XPtr<IEcountgmifsCriterion>(
     new RFunctionCriterion(
       name,
+      prepare,
       evaluate,
       environment
     ),

@@ -44,6 +44,7 @@
   list(
     Xtest = Xtest,
     ytest = ytest,
+    log.factorial = lgamma(ytest + 1),
     wtest = wtest,
     offsettest = offsettest,
     mu.min.cap = as.numeric(mu.min.cap),
@@ -111,7 +112,8 @@ example.r.test.criterion.environment <- function(
         .r.test.criterion.dispersion(state),
         environment$mu.min.cap,
         environment$mu.max.cap,
-        environment$poisson.fallback.eps
+        environment$poisson.fallback.eps,
+        log.factorial = environment$log.factorial
       )
     }
   )
@@ -149,6 +151,7 @@ example.r.test.criterion.closure <- function(
   )
   Xtest <- data$Xtest
   ytest <- data$ytest
+  log.factorial <- data$log.factorial
   wtest <- data$wtest
   offsettest <- data$offsettest
   mu.min.cap <- data$mu.min.cap
@@ -168,7 +171,8 @@ example.r.test.criterion.closure <- function(
         .r.test.criterion.dispersion(state),
         mu.min.cap,
         mu.max.cap,
-        poisson.fallback.eps
+        poisson.fallback.eps,
+        log.factorial = log.factorial
       )
     }
   )

@@ -2,9 +2,12 @@
 % Please edit documentation in R/plugin_compile.R
 \name{clear.plugin.cache}
 \alias{clear.plugin.cache}
+\alias{clear.criterion.cache}
 \title{Clear the live-compiled plugin cache}
 \usage{
 clear.plugin.cache()
+
+clear.criterion.cache()
 }
 \value{
 Invisibly returns \code{TRUE}.
@@ -14,13 +17,10 @@ Clear the live-compiled plugin cache
 }
 \seealso{
 Other live-compiled plugins:
-\code{\link[=clear.criterion.cache]{clear.criterion.cache()}},
 \code{\link[=compile.criterion]{compile.criterion()}},
-\code{\link[=compile.criterion.file]{compile.criterion.file()}},
 \code{\link[=compile.family]{compile.family()}},
 \code{\link[=compile.family.link]{compile.family.link()}},
 \code{\link[=compile.link]{compile.link()}},
-\code{\link[=list.criterion.cache]{list.criterion.cache()}},
 \code{\link[=list.plugin.cache]{list.plugin.cache()}}
 }
 \concept{live-compiled plugins}

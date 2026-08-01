@@ -3,7 +3,7 @@
 \name{compile.family.link}
 \alias{compile.family.link}
 \alias{compile.family.link.file}
-\title{Live-compile a C++ fused family-link child}
+\title{Live-compile a C++ fused family-link plugin}
 \usage{
 compile.family.link(
   code,
@@ -35,20 +35,17 @@ compile.family.link.file(
 \item{file}{Path to a complete C++ source file.}
 }
 \value{
-An external pointer returned by the factory.
+An owning external pointer returned by the factory.
 }
 \description{
-Live-compile a C++ fused family-link child
+Live-compile a C++ fused family-link plugin
 }
 \seealso{
 Other live-compiled plugins:
-\code{\link[=clear.criterion.cache]{clear.criterion.cache()}},
 \code{\link[=clear.plugin.cache]{clear.plugin.cache()}},
 \code{\link[=compile.criterion]{compile.criterion()}},
-\code{\link[=compile.criterion.file]{compile.criterion.file()}},
 \code{\link[=compile.family]{compile.family()}},
 \code{\link[=compile.link]{compile.link()}},
-\code{\link[=list.criterion.cache]{list.criterion.cache()}},
 \code{\link[=list.plugin.cache]{list.plugin.cache()}}
 }
 \concept{live-compiled plugins}

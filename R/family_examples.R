@@ -22,6 +22,11 @@
     "  }",
     "  std::string name() const override { return \"Poisson.live\"; }",
     "  arma::uword parameter_count() const noexcept override { return 0; }",
+    "  void prepare(const EcountgmifsInput& input, const EcountgmifsControl& control) const override",
+    "  {",
+    "    (void) input;",
+    "    (void) control;",
+    "  }",
     "  void negloglik(const arma::vec& y, const arma::vec& mu, const arma::vec& parameters, double& value) const override",
     "  {",
     "    if (!parameters.empty() || y.n_elem != mu.n_elem) throw std::invalid_argument(\"Invalid Poisson arguments.\");",
@@ -69,6 +74,7 @@
     "  double initial_;",
     "  double lower_;",
     "  double upper_;",
+    "  mutable arma::vec log_factorial_;",
     "",
     "  double dispersion(const arma::vec& parameters) const",
     "  {",
@@ -90,26 +96,34 @@
     "  arma::vec initial_parameters() const override { return arma::vec({initial_}); }",
     "  arma::vec parameter_lower_bounds() const override { return arma::vec({lower_}); }",
     "  arma::vec parameter_upper_bounds() const override { return arma::vec({upper_}); }",
+    "  void prepare(const EcountgmifsInput& input, const EcountgmifsControl& control) const override",
+    "  {",
+    "    (void) control;",
+    "    log_factorial_ = arma::lgamma(input.y + 1.0);",
+    "  }",
     "",
     "  void negloglik(const arma::vec& y, const arma::vec& mu, const arma::vec& parameters, double& value) const override",
     "  {",
     "    if (y.n_elem != mu.n_elem) throw std::invalid_argument(\"NB2 y/mu lengths differ.\");",
+    "    if (log_factorial_.n_elem != y.n_elem)",
+    "      throw std::runtime_error(\"LiveNB2Family::prepare() must be called before negloglik().\");",
     "    const double a = dispersion(parameters);",
     "    value = 0.0;",
     "    if (a <= fallback_) {",
     "      for (arma::uword i = 0; i < y.n_elem; ++i) {",
     "        const double m = std::min(std::max(mu[i], mu_min_), mu_max_);",
-    "        value += m - y[i] * std::log(m) + std::lgamma(y[i] + 1.0);",
+    "        value += m - y[i] * std::log(m) + log_factorial_[i];",
     "      }",
     "      return;",
     "    }",
     "    if (a <= 0.0) { value = std::numeric_limits<double>::infinity(); return; }",
     "    const double r = 1.0 / a;",
+    "    const double lgamma_r = std::lgamma(r);",
     "    for (arma::uword i = 0; i < y.n_elem; ++i) {",
     "      const double m = std::min(std::max(mu[i], mu_min_), mu_max_);",
     "      const double am = a * m;",
     "      const double lp = std::log1p(am);",
-    "      value -= y[i] * (std::log(am) - lp) - r * lp + std::lgamma(y[i] + r) - std::lgamma(y[i] + 1.0) - std::lgamma(r);",
+    "      value -= y[i] * (std::log(am) - lp) - r * lp + std::lgamma(y[i] + r) - log_factorial_[i] - lgamma_r;",
     "    }",
     "  }",
     "",
@@ -146,8 +160,9 @@
 #'
 #' @description
 #' A family plugin evaluates negative log-likelihood and its derivatives with
-#' respect to `mu` and optimized family parameters. [r.family()] callbacks have
-#' signatures `negloglik(y, mu, family.parameters, environment)` and
+#' respect to `mu` and optimized family parameters. [r.family()] supports an
+#' optional `prepare(input, control, environment)` callback invoked once before
+#' fitting, followed by `negloglik(y, mu, family.parameters, environment)` and
 #' `grad(y, mu, family.parameters, environment)`.
 #'
 #' `negloglik()` returns one finite numeric value. `grad()` returns a list with
@@ -161,7 +176,8 @@
 #' `Var(Y) = mu * (1 + a * mu)` as one optimized family parameter. Its initial
 #' value and lower/upper bounds are constructor arguments. `mu.min.cap`,
 #' `mu.max.cap`, and `poisson.fallback.eps` are fixed configuration and are not
-#' optimized.
+#' optimized. The NB2 examples use `prepare()` to cache `lgamma(y + 1)` once
+#' per fit and reuse it in both the NB2 and Poisson-limit likelihoods.
 #'
 #' @section Four variants:
 #' `.builtin()` uses classes from `src/example.h`; `.live()` compiles complete
@@ -171,6 +187,8 @@
 #'
 #' @section Performance and thread safety:
 #' Native and live C++ are suitable for repeated likelihood and gradient calls.
+#' Their prepared NB2 cache is mutable and fit-specific, so the same plugin
+#' pointer must not be evaluated concurrently by multiple fits.
 #' R callbacks are vectorized but pay one R boundary crossing per evaluation.
 #' R callbacks must execute on the R main thread. Mutable retained state is not
 #' thread-safe and should normally be reserved for diagnostics.
@@ -367,6 +385,10 @@ plugin.family.nb2.live <- function(
 
   r.family(
     name = name,
+    prepare = function(input, control, environment) {
+      environment$log.factorial <- lgamma(input$y + 1)
+      invisible(NULL)
+    },
     initial.parameters = settings$dispersion.initial,
     lower.bounds = settings$dispersion.lower.bound,
     upper.bounds = settings$dispersion.upper.bound,
@@ -375,7 +397,8 @@ plugin.family.nb2.live <- function(
       fixed <- current(environment)
       .r.nb2.negloglik(
         y, mu, family.parameters[[1L]], fixed$mu.min.cap,
-        fixed$mu.max.cap, fixed$poisson.fallback.eps
+        fixed$mu.max.cap, fixed$poisson.fallback.eps,
+        log.factorial = environment$log.factorial
       )
     },
     grad = function(y, mu, family.parameters, environment) {

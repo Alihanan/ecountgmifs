@@ -19,6 +19,7 @@
     "  double initial_;",
     "  double lower_;",
     "  double upper_;",
+    "  mutable arma::vec log_factorial_;",
     "",
     "  double dispersion(const arma::vec& parameters) const",
     "  {",
@@ -42,6 +43,11 @@
     "  arma::vec family_initial_parameters() const override { return arma::vec({initial_}); }",
     "  arma::vec family_parameter_lower_bounds() const override { return arma::vec({lower_}); }",
     "  arma::vec family_parameter_upper_bounds() const override { return arma::vec({upper_}); }",
+    "  void prepare(const EcountgmifsInput& input, const EcountgmifsControl& control) const override",
+    "  {",
+    "    (void) control;",
+    "    log_factorial_ = arma::lgamma(input.y + 1.0);",
+    "  }",
     "",
     "  void inverse(const arma::vec& eta, const arma::vec& link_parameters, arma::vec& mu) const override",
     "  {",
@@ -52,22 +58,25 @@
     "  void negloglik(const arma::vec& y, const arma::vec& mu, const arma::vec& family_parameters, double& value) const override",
     "  {",
     "    if (y.n_elem != mu.n_elem) throw std::invalid_argument(\"NB2-log y/mu lengths differ.\");",
+    "    if (log_factorial_.n_elem != y.n_elem)",
+    "      throw std::runtime_error(\"LiveNB2LogFamilyLink::prepare() must be called before negloglik().\");",
     "    const double a = dispersion(family_parameters);",
     "    value = 0.0;",
     "    if (a <= fallback_) {",
     "      for (arma::uword i = 0; i < y.n_elem; ++i) {",
     "        const double m = std::min(std::max(mu[i], mu_min_), mu_max_);",
-    "        value += m - y[i] * std::log(m) + std::lgamma(y[i] + 1.0);",
+    "        value += m - y[i] * std::log(m) + log_factorial_[i];",
     "      }",
     "      return;",
     "    }",
     "    if (a <= 0.0) { value = std::numeric_limits<double>::infinity(); return; }",
     "    const double r = 1.0 / a;",
+    "    const double lgamma_r = std::lgamma(r);",
     "    for (arma::uword i = 0; i < y.n_elem; ++i) {",
     "      const double m = std::min(std::max(mu[i], mu_min_), mu_max_);",
     "      const double am = a * m;",
     "      const double lp = std::log1p(am);",
-    "      value -= y[i] * (std::log(am) - lp) - r * lp + std::lgamma(y[i] + r) - std::lgamma(y[i] + 1.0) - std::lgamma(r);",
+    "      value -= y[i] * (std::log(am) - lp) - r * lp + std::lgamma(y[i] + r) - log_factorial_[i] - lgamma_r;",
     "    }",
     "  }",
     "",
@@ -122,7 +131,8 @@
 #' calculations and may provide `d(negative log-likelihood)/d(eta)` directly.
 #' It takes precedence over separately supplied `family` and `link` plugins.
 #'
-#' [r.family.link()] uses callbacks
+#' [r.family.link()] uses an optional
+#' `prepare(input, control, environment)` callback once before fitting, then
 #' `inverse(eta, link.parameters, environment)`,
 #' `negloglik(y, mu, family.parameters, environment)`, and
 #' `grad(y, eta, mu, family.parameters, link.parameters, environment)`.
@@ -139,6 +149,8 @@
 #' `mu.max.cap`, and `poisson.fallback.eps` are fixed auxiliary configuration.
 #' The fused implementation supplies the stable eta-scale derivative
 #' `(mu - y) / (1 + dispersion * mu)` outside the Poisson fallback region.
+#' All NB2-log variants cache `lgamma(y + 1)` during `prepare()` and reuse it
+#' in subsequent likelihood evaluations.
 #'
 #' @section Four variants:
 #' `.builtin()` uses `NB2LogFamilyLink` from `src/example.h`; `.live()` compiles
@@ -148,7 +160,8 @@
 #' @section Performance and thread safety:
 #' Fused built-in or live C++ avoids R callbacks and can avoid intermediate
 #' chain-rule work. R variants are vectorized but execute on the R main thread.
-#' Mutable R state is not thread-safe.
+#' Mutable R state is not thread-safe. The native prepared cache is also
+#' fit-specific, so one plugin pointer must not be used by concurrent fits.
 #'
 #' @inheritParams plugin.family.nb2.builtin
 #' @param cache Reuse the live-compiled object in the current R session.
@@ -258,6 +271,10 @@ plugin.family.link.nb2.log.live <- function(
   r.family.link(
     family.name = name,
     link.name = "Log",
+    prepare = function(input, control, environment) {
+      environment$log.factorial <- lgamma(input$y + 1)
+      invisible(NULL)
+    },
     family.initial.parameters = settings$dispersion.initial,
     family.lower.bounds = settings$dispersion.lower.bound,
     family.upper.bounds = settings$dispersion.upper.bound,
@@ -267,7 +284,8 @@ plugin.family.link.nb2.log.live <- function(
       current <- fixed(environment)
       .r.nb2.negloglik(
         y, mu, family.parameters[[1L]], current$mu.min.cap,
-        current$mu.max.cap, current$poisson.fallback.eps
+        current$mu.max.cap, current$poisson.fallback.eps,
+        log.factorial = environment$log.factorial
       )
     },
     grad = function(y, eta, mu, family.parameters, link.parameters, environment) {

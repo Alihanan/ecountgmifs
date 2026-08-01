@@ -16,7 +16,8 @@ r.family.link(
   link.initial.parameters = numeric(),
   link.lower.bounds = NULL,
   link.upper.bounds = NULL,
-  environment = NULL
+  environment = NULL,
+  prepare = NULL
 )
 }
 \arguments{
@@ -31,6 +32,8 @@ r.family.link(
 \item{link.lower.bounds, link.upper.bounds}{Link-parameter bounds.}
 
 \item{environment}{Retained explicit auxiliary environment or named list.}
+
+\item{prepare}{Optional one-time preparation callback.}
 }
 \value{
 An external pointer to an \code{IEcountgmifsFamilyLink} implementation.
@@ -41,6 +44,7 @@ Wraps three R callbacks in the built-in C++ child of
 \code{d_negloglik_d_eta} directly and can therefore avoid the ordinary separated
 family/link chain rule.
 
+\code{prepare(input, control, environment)} is invoked once before fitting.
 \code{inverse(eta, link.parameters, environment)} returns \code{mu}.
 \code{negloglik(y, mu, family.parameters, environment)} returns one value.
 \code{grad(y, eta, mu, family.parameters, link.parameters, environment)} returns

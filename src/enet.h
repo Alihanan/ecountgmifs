@@ -66,39 +66,39 @@ static inline void prepare_elastic_net_gradient(
   workspace.c =
     &c;
 
-  workspace.ensure_size(c.n_elem);
-  workspace.gradient_is_zero =
-    true;
-
-  /*
-   * Fill both persistent work buffers in one pass. This avoids two
-   * temporary p-vectors and a third pass through c for is_zero() at every
-   * stagewise iteration.
-   */
-  for (
-      arma::uword i = 0;
-      i < c.n_elem;
-      ++i
-  ) {
-    const double value =
-      c[i];
-
-    if (!std::isfinite(value)) {
-      Rcpp::stop(
-        "value of 'c' must contain only finite values"
-      );
-    }
-
-    workspace.abs_c[i] =
-      std::abs(value);
-
-    workspace.sign_c[i] =
-      static_cast<double>(signum(value));
-
+    workspace.ensure_size(c.n_elem);
     workspace.gradient_is_zero =
-      workspace.gradient_is_zero &&
-      value == 0.0;
-  }
+      true;
+
+    /*
+     * Fill both persistent work buffers in one pass. This avoids two
+     * temporary p-vectors and a third pass through c for is_zero() at every
+     * stagewise iteration.
+     */
+    for (
+        arma::uword i = 0;
+        i < c.n_elem;
+        ++i
+    ) {
+      const double value =
+        c[i];
+
+      if (!std::isfinite(value)) {
+        Rcpp::stop(
+          "value of 'c' must contain only finite values"
+        );
+      }
+
+      workspace.abs_c[i] =
+        std::abs(value);
+
+      workspace.sign_c[i] =
+        static_cast<double>(signum(value));
+
+      workspace.gradient_is_zero =
+        workspace.gradient_is_zero &&
+        value == 0.0;
+    }
 }
 
 static inline void x_of_lambda_weight_inplace(
@@ -133,9 +133,9 @@ static inline void x_of_lambda_weight_inplace(
 
     x_out[i] =
       thresholded > 0.0
-        ? -prepared.sign_c[i] * thresholded /
-            (denominator_scale * weight_vec[i])
-        : 0.0;
+    ? -prepared.sign_c[i] * thresholded /
+      (denominator_scale * weight_vec[i])
+      : 0.0;
   }
 }
 
@@ -147,36 +147,21 @@ static inline double elastic_net_g_weight_inplace(
 ) {
   (void) workspace;
 
-  double weighted_l1 =
-    0.0;
-
-  double weighted_l2_squared =
-    0.0;
-
   /*
-   * This function is called repeatedly during lambda bracketing/bisection.
-   * Accumulate the same two sums as the original expression, but without
-   * allocating abs(x), square(x), or weighted temporary vectors. Keeping the
-   * sums separate also preserves the original arithmetic order closely.
+   * Deliberately use the exact Armadillo expression from glmSS here.
+   * The previous scalar loop changed floating-point accumulation order,
+   * which can move the lambda-bisection stopping point by one iteration and
+   * eventually change the forward-stagewise path.
    */
-  for (
-      arma::uword i = 0;
-      i < x.n_elem;
-      ++i
-  ) {
-    const double x_i =
-      x[i];
-
-    weighted_l1 +=
-      weight_vec[i] * std::abs(x_i);
-
-    weighted_l2_squared +=
-      weight_vec[i] * x_i * x_i;
-  }
-
   return
-    alpha * weighted_l1 +
-    (1.0 - alpha) * weighted_l2_squared;
+  alpha *
+    arma::accu(
+      weight_vec % arma::abs(x)
+    ) +
+      (1.0 - alpha) *
+      arma::accu(
+        weight_vec % arma::square(x)
+      );
 }
 
 static inline double g_at_weight_inplace(

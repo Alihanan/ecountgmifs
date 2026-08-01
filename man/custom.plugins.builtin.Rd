@@ -2,78 +2,57 @@
 % Please edit documentation in R/plugin_documentation.R
 \name{custom.plugins.builtin}
 \alias{custom.plugins.builtin}
-\title{Package-built C++ plugins}
+\title{Package-built native C++ plugins}
 \description{
-Package-built plugins are concrete children defined in \code{src/example.h} and
-compiled when \code{ecountgmifs} is installed. They are the normal high-performance
-implementations. Constructor inputs become class members, while family and
-link parameters declared by the virtual interface are owned and optimized by
-the fitter.
+Built-in plugins are concrete children compiled with the package, currently
+in \code{src/example.h}. Constructor arguments become native class members;
+optimized family and link parameters are still initialized and bounded
+through the virtual interface. These are the normal high-performance
+implementations and do not enter the R interpreter during fitting.
 
-Built-in constructors are documented on \link{link.plugins}, \link{family.plugins},
-\link{family.link.plugins}, and \link{information.criteria}.
+Built-in examples include log and softplus links, Poisson and NB2 families,
+the fused NB2-log family-link, and information criteria. Before fitting, the
+core calls \code{prepare(input, control)} once. NB2 uses this hook to cache
+\code{lgamma(y + 1)} for repeated likelihood evaluations. Constructors are
+documented on \link{link.plugins}, \link{family.plugins}, \link{family.link.plugins}, and
+\link{information.criteria}. Constructor configuration is immutable, but
+\code{prepare()} may populate a mutable fit-specific cache. Consequently, a
+cache-bearing plugin pointer such as NB2 must not be shared by concurrent
+fits; separate plugin objects are safe.
 }
-\section{Complete built-in source examples}{
-
-The following strings contain complete examples of the code pattern used in
-\code{src/example.h}. They are shown as character data so they can be copied into
-another package source file without being compiled by the example runner.
-}
-
 \examples{
-log.link.builtin.code <- '
-#include <RcppArmadillo.h>
-#include <ecountgmifs/api.h>
+\dontrun{
+set.seed(1)
+X <- matrix(rnorm(80), 20, 4)
+y <- rpois(20, lambda = 2)
 
-class LogLink final : public IEcountgmifsLinkFunc
-{
-public:
-  std::string name() const override { return "Log"; }
-  arma::uword parameter_count() const noexcept override { return 0; }
-  void inverse(const arma::vec& eta, const arma::vec&, arma::vec& mu) const override
-  {
-    mu = arma::exp(eta);
-  }
-  void grad(const arma::vec& eta, const arma::vec&, arma::vec& d_mu_d_eta,
-            arma::mat& d_mu_d_link_parameters) const override
-  {
-    d_mu_d_eta = arma::exp(eta);
-    d_mu_d_link_parameters.set_size(eta.n_elem, 0);
-  }
-};
+family <- plugin.family.poisson.builtin(
+  mu.min.cap = 1e-12,
+  mu.max.cap = 1e12
+)
+link <- plugin.link.log.builtin()
+criteria <- list(
+  AIC.nnz = plugin.criterion.AIC.nnz.builtin(),
+  BIC.nnz = plugin.criterion.BIC.nnz.builtin()
+)
 
-// [[Rcpp::export]]
-SEXP create_log_link()
-{
-  return Rcpp::XPtr<IEcountgmifsLinkFunc>(new LogLink(), true);
+fit <- ecountgmifs(
+  X = X,
+  y = y,
+  family = family,
+  link = link,
+  criteria = criteria,
+  control = ecountgmifs.control(stagewise.iteration.max = 20L)
+)
+
+fused.fit <- ecountgmifs(
+  X = X,
+  y = y,
+  family.link = plugin.family.link.nb2.log.builtin(),
+  criteria = list(AIC = plugin.criterion.AIC.builtin()),
+  control = ecountgmifs.control(stagewise.iteration.max = 20L)
+)
 }
-'
-
-criterion.builtin.code <- '
-#include <RcppArmadillo.h>
-#include <ecountgmifs/api.h>
-
-class AICCriterion final : public IEcountgmifsCriterion
-{
-public:
-  std::string name() const override { return "AIC"; }
-  double evaluate(const EcountgmifsInput&, const EcountgmifsControl&,
-                  const EcountgmifsState& state) const override
-  {
-    const double df = arma::accu(state.param.param.beta != 0.0);
-    return 2.0 * state.negloglik + 2.0 * df;
-  }
-};
-
-// [[Rcpp::export]]
-SEXP create_aic_criterion()
-{
-  return Rcpp::XPtr<IEcountgmifsCriterion>(new AICCriterion(), true);
-}
-'
-
-link <- log.link.builtin()
-criterion <- AIC.nnz.builtin()
 
 }
 \seealso{

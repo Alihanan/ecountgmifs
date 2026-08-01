@@ -75,9 +75,32 @@
   }
 }
 
-.r.poisson.negloglik <- function(y, mu, mu.min.cap, mu.max.cap) {
+.r.validate.log.factorial <- function(y, log.factorial) {
+  if (
+      !is.numeric(log.factorial) ||
+      length(log.factorial) != length(y) ||
+      anyNA(log.factorial) ||
+      any(!is.finite(log.factorial))
+  ) {
+    stop(
+      "Prepared `log.factorial` must be a finite numeric vector matching `y`.",
+      call. = FALSE
+    )
+  }
+
+  log.factorial
+}
+
+.r.poisson.negloglik <- function(
+    y,
+    mu,
+    mu.min.cap,
+    mu.max.cap,
+    log.factorial = lgamma(y + 1)
+) {
+  log.factorial <- .r.validate.log.factorial(y, log.factorial)
   mu.safe <- .r.clamp(mu, mu.min.cap, mu.max.cap)
-  sum(mu.safe - y * log(mu.safe) + lgamma(y + 1))
+  sum(mu.safe - y * log(mu.safe) + log.factorial)
 }
 
 .r.poisson.grad <- function(y, mu) {
@@ -93,10 +116,21 @@
     dispersion,
     mu.min.cap,
     mu.max.cap,
-    poisson.fallback.eps
+    poisson.fallback.eps,
+    log.factorial
 ) {
+  log.factorial <- .r.validate.log.factorial(y, log.factorial)
+
   if (dispersion <= poisson.fallback.eps) {
-    return(.r.poisson.negloglik(y, mu, mu.min.cap, mu.max.cap))
+    return(
+      .r.poisson.negloglik(
+        y,
+        mu,
+        mu.min.cap,
+        mu.max.cap,
+        log.factorial = log.factorial
+      )
+    )
   }
   if (dispersion <= 0) {
     return(Inf)
@@ -104,6 +138,7 @@
 
   mu.safe <- .r.clamp(mu, mu.min.cap, mu.max.cap)
   r <- 1 / dispersion
+  lgamma.r <- lgamma(r)
   dispersion.mu <- dispersion * mu.safe
   log.one.plus <- log1p(dispersion.mu)
 
@@ -111,8 +146,8 @@
     y * (log(dispersion.mu) - log.one.plus) -
       r * log.one.plus +
       lgamma(y + r) -
-      lgamma(y + 1) -
-      lgamma(r)
+      log.factorial -
+      lgamma.r
   )
 }
 

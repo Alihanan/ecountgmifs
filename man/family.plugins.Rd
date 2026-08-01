@@ -3,25 +3,37 @@
 \name{family.plugins}
 \alias{family.plugins}
 \alias{family-plugins}
-\alias{poisson.family.builtin}
-\alias{poisson.family.live}
-\alias{poisson.family.r.environment}
-\alias{poisson.family.r.closure}
-\alias{nb2.family.builtin}
-\alias{nb2.family.live}
-\alias{nb2.family.r.environment}
-\alias{nb2.family.r.closure}
-\title{Family plugin examples in four implementation variants}
+\alias{plugin.family.poisson.builtin}
+\alias{plugin.family.poisson.live}
+\alias{plugin.family.poisson.r.environment}
+\alias{plugin.family.poisson.r.closure}
+\alias{plugin.family.nb2.builtin}
+\alias{plugin.family.nb2.live}
+\alias{plugin.family.nb2.r.environment}
+\alias{plugin.family.nb2.r.closure}
+\alias{example.poisson.family}
+\alias{example.nb2.family}
+\alias{example.r.poisson.family}
+\alias{example.r.nb2.family}
+\alias{example.r.poisson.family.environment}
+\alias{example.r.poisson.family.closure}
+\alias{example.r.nb2.family.environment}
+\alias{example.r.nb2.family.closure}
+\title{Family plugins in four implementation variants}
 \usage{
-poisson.family.builtin(mu.min.cap = 1e-12, mu.max.cap = 1e+12)
+plugin.family.poisson.builtin(mu.min.cap = 1e-12, mu.max.cap = 1e+12)
 
-poisson.family.live(mu.min.cap = 1e-12, mu.max.cap = 1e+12, cache = TRUE)
+plugin.family.poisson.live(
+  mu.min.cap = 1e-12,
+  mu.max.cap = 1e+12,
+  cache = TRUE
+)
 
-poisson.family.r.environment(mu.min.cap = 1e-12, mu.max.cap = 1e+12)
+plugin.family.poisson.r.environment(mu.min.cap = 1e-12, mu.max.cap = 1e+12)
 
-poisson.family.r.closure(mu.min.cap = 1e-12, mu.max.cap = 1e+12)
+plugin.family.poisson.r.closure(mu.min.cap = 1e-12, mu.max.cap = 1e+12)
 
-nb2.family.builtin(
+plugin.family.nb2.builtin(
   mu.min.cap = 1e-12,
   mu.max.cap = 1e+12,
   poisson.fallback.eps = 1e-08,
@@ -30,7 +42,7 @@ nb2.family.builtin(
   dispersion.upper.bound = 1e+12
 )
 
-nb2.family.live(
+plugin.family.nb2.live(
   mu.min.cap = 1e-12,
   mu.max.cap = 1e+12,
   poisson.fallback.eps = 1e-08,
@@ -40,7 +52,7 @@ nb2.family.live(
   cache = TRUE
 )
 
-nb2.family.r.environment(
+plugin.family.nb2.r.environment(
   mu.min.cap = 1e-12,
   mu.max.cap = 1e+12,
   poisson.fallback.eps = 1e-08,
@@ -49,7 +61,51 @@ nb2.family.r.environment(
   dispersion.upper.bound = 1e+12
 )
 
-nb2.family.r.closure(
+plugin.family.nb2.r.closure(
+  mu.min.cap = 1e-12,
+  mu.max.cap = 1e+12,
+  poisson.fallback.eps = 1e-08,
+  dispersion.initial = 1e-04,
+  dispersion.lower.bound = 1e-12,
+  dispersion.upper.bound = 1e+12
+)
+
+example.poisson.family(mu.min.cap = 1e-12, mu.max.cap = 1e+12)
+
+example.nb2.family(
+  mu.min.cap = 1e-12,
+  mu.max.cap = 1e+12,
+  poisson.fallback.eps = 1e-08,
+  dispersion.initial = 1e-04,
+  dispersion.lower.bound = 1e-12,
+  dispersion.upper.bound = 1e+12
+)
+
+example.r.poisson.family(mu.min.cap = 1e-12, mu.max.cap = 1e+12)
+
+example.r.nb2.family(
+  mu.min.cap = 1e-12,
+  mu.max.cap = 1e+12,
+  poisson.fallback.eps = 1e-08,
+  dispersion.initial = 1e-04,
+  dispersion.lower.bound = 1e-12,
+  dispersion.upper.bound = 1e+12
+)
+
+example.r.poisson.family.environment(mu.min.cap = 1e-12, mu.max.cap = 1e+12)
+
+example.r.poisson.family.closure(mu.min.cap = 1e-12, mu.max.cap = 1e+12)
+
+example.r.nb2.family.environment(
+  mu.min.cap = 1e-12,
+  mu.max.cap = 1e+12,
+  poisson.fallback.eps = 1e-08,
+  dispersion.initial = 1e-04,
+  dispersion.lower.bound = 1e-12,
+  dispersion.upper.bound = 1e+12
+)
+
+example.r.nb2.family.closure(
   mu.min.cap = 1e-12,
   mu.max.cap = 1e+12,
   poisson.fallback.eps = 1e-08,
@@ -59,34 +115,90 @@ nb2.family.r.closure(
 )
 }
 \arguments{
-\item{mu.min.cap, mu.max.cap}{Positive fixed mean clamps.}
+\item{mu.min.cap, mu.max.cap}{Positive fixed clamps for \code{mu}.}
 
 \item{cache}{Reuse the live-compiled object in the current R session.}
 
-\item{poisson.fallback.eps}{Non-negative fixed NB2-to-Poisson threshold.}
+\item{poisson.fallback.eps}{Non-negative fixed NB2 threshold below which the
+Poisson limit is used.}
 
 \item{dispersion.initial}{Initial optimized NB2 dispersion.}
 
-\item{dispersion.lower.bound, dispersion.upper.bound}{Dispersion bounds.}
+\item{dispersion.lower.bound, dispersion.upper.bound}{Bounds for dispersion.}
 }
 \value{
 An external pointer to an \code{IEcountgmifsFamily} child.
 }
 \description{
-Poisson and NB2 families are available as built-in C++, live-compiled C++,
-R callbacks with explicit environment data, and R callbacks with closure-
-captured data. Mean clamps and the Poisson fallback threshold are fixed
-family configuration; NB2 dispersion is an optimized family parameter.
+A family plugin evaluates negative log-likelihood and its derivatives with
+respect to \code{mu} and optimized family parameters. \code{\link[=r.family]{r.family()}} supports an
+optional \code{prepare(input, control, environment)} callback invoked once before
+fitting, followed by \code{negloglik(y, mu, family.parameters, environment)} and
+\code{grad(y, mu, family.parameters, environment)}.
+
+\code{negloglik()} returns one finite numeric value. \code{grad()} returns a list with
+\code{d_negloglik_d_mu}, a vector of length \code{length(y)}, and
+\code{d_negloglik_d_family_parameters}, a vector with one element per optimized
+family parameter.
 }
+\section{Current examples}{
+
+Poisson has no optimized family parameters. Its positive \code{mu.min.cap} and
+\code{mu.max.cap} are fixed auxiliary configuration. NB2 uses dispersion \code{a} in
+\code{Var(Y) = mu * (1 + a * mu)} as one optimized family parameter. Its initial
+value and lower/upper bounds are constructor arguments. \code{mu.min.cap},
+\code{mu.max.cap}, and \code{poisson.fallback.eps} are fixed configuration and are not
+optimized. The NB2 examples use \code{prepare()} to cache \code{lgamma(y + 1)} once
+per fit and reuse it in both the NB2 and Poisson-limit likelihoods.
+}
+
+\section{Four variants}{
+
+\code{.builtin()} uses classes from \code{src/example.h}; \code{.live()} compiles complete
+C++ children of \code{IEcountgmifsFamily}; \code{.r.environment()} stores fixed data in
+one explicit environment; \code{.r.closure()} captures fixed data in the outer R
+factory. All return ordinary owning external pointers.
+}
+
+\section{Performance and thread safety}{
+
+Native and live C++ are suitable for repeated likelihood and gradient calls.
+Their prepared NB2 cache is mutable and fit-specific, so the same plugin
+pointer must not be evaluated concurrently by multiple fits.
+R callbacks are vectorized but pay one R boundary crossing per evaluation.
+R callbacks must execute on the R main thread. Mutable retained state is not
+thread-safe and should normally be reserved for diagnostics.
+}
+
 \examples{
 families <- list(
-  builtin = nb2.family.builtin(),
-  live = nb2.family.live(),
-  environment = nb2.family.r.environment(),
-  closure = nb2.family.r.closure()
+  poisson.builtin = plugin.family.poisson.builtin(),
+  poisson.live = plugin.family.poisson.live(),
+  nb2.environment = plugin.family.nb2.r.environment(),
+  nb2.closure = plugin.family.nb2.r.closure()
 )
+
+\dontrun{
+set.seed(1)
+X <- matrix(rnorm(80), 20, 4)
+y <- rnbinom(20, mu = 2, size = 4)
+fit <- ecountgmifs(
+  X = X,
+  y = y,
+  family = plugin.family.nb2.r.environment(
+    mu.min.cap = 1e-12,
+    mu.max.cap = 1e12,
+    poisson.fallback.eps = 1e-8,
+    dispersion.initial = 0.25,
+    dispersion.lower.bound = 1e-12,
+    dispersion.upper.bound = 1e12
+  ),
+  link = plugin.link.log.builtin(),
+  control = ecountgmifs.control(stagewise.iteration.max = 20L)
+)
+}
 
 }
 \seealso{
-\link{custom.plugins}, \link{custom.plugins.live}, \code{\link[=r.family]{r.family()}}
+\link{custom.plugins}, \link{link.plugins}, \link{family.link.plugins}, \code{\link[=r.family]{r.family()}}
 }

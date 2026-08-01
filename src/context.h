@@ -353,7 +353,9 @@ public:
           Rcpp::Named("criteria") =
             criterion_names,
           Rcpp::Named("enet_alpha") = api.enet_alpha,
-          Rcpp::Named("has_prior") = api.has_prior
+          Rcpp::Named("has_prior") = api.has_prior,
+          Rcpp::Named("weight_vec") =
+            ecountgmifs::output::to_r_vector(api.weight_vec)
     );
 
     if (include_data) {

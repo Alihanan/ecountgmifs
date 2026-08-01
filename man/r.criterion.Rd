@@ -4,7 +4,7 @@
 \alias{r.criterion}
 \title{Construct an R-backed model-selection criterion}
 \usage{
-r.criterion(name, evaluate, environment = NULL)
+r.criterion(name, evaluate, environment = NULL, prepare = NULL)
 }
 \arguments{
 \item{name}{Non-empty criterion name.}
@@ -12,16 +12,41 @@ r.criterion(name, evaluate, environment = NULL)
 \item{evaluate}{R criterion callback returning one numeric value.}
 
 \item{environment}{Retained explicit auxiliary environment or named list.}
+
+\item{prepare}{Optional one-time preparation callback.}
 }
 \value{
 An external pointer to an \code{IEcountgmifsCriterion} implementation.
 }
 \description{
 Wraps \code{evaluate(input, control, state, environment)} in the built-in C++
-child of \code{IEcountgmifsCriterion}. The first three arguments are named R lists
-representing the corresponding public C++ API views. The environment is the
-same object retained at construction.
+child of \code{IEcountgmifsCriterion}. An optional
+\code{prepare(input, control, environment)} callback is invoked once before
+fitting. The first three evaluation arguments are named R lists
+representing simplified read-only views of the corresponding public C++ API
+objects. The environment is the same object retained at construction.
 }
+\section{Criterion callback views}{
+
+\code{input} contains \code{X}, \code{y}, \code{w}, \code{offset}, \code{weight_vec}, \code{n}, \code{p}, \code{q},
+\code{has_prior}, \code{enet_alpha}, \code{family_name}, \code{link_name},
+\code{family_parameter_count}, and \code{link_parameter_count}.
+
+\code{control} contains \code{null_iteration_max}, \code{stagewise_iteration_max},
+\code{null_family_parameter_abs_tol}, \code{stagewise_objective_rel_tol},
+\code{stagewise_beta_step_norm_tol}, \code{epsilon_max}, \code{epsilon_start},
+\code{epsilon_min}, \code{loglik_reltol_cutoff}, \code{enet_abs_tol}, \code{enet_rel_tol},
+\code{enet_max_iter}, \code{state_track_strategy}, \code{state_track_freq}, \code{verbose},
+\code{include_data}, \code{theta_initial}, \code{theta_lower_bounds}, and
+\code{theta_upper_bounds}. It also contains \code{nonpen_nlopt}, \code{family_nlopt}, and
+\code{link_nlopt}; each nested list has \code{algorithm}, \code{xtol_rel}, \code{ftol_rel}, and
+\code{maxeval}.
+
+\code{state} contains \code{beta}, \code{theta}, \code{family_parameters}, \code{link_parameters},
+\code{xbeta}, \code{wtheta}, \code{eta}, \code{mu}, \code{active_set}, \code{negloglik}, \code{criteria},
+\code{iteration}, \code{pseudo_r2}, and \code{elapsed_time}.
+}
+
 \seealso{
 \link{custom.plugins}, \link{information.criteria}
 

@@ -3,13 +3,17 @@
 \name{family.link.plugins}
 \alias{family.link.plugins}
 \alias{family-link-plugins}
-\alias{nb2.log.family.link.builtin}
-\alias{nb2.log.family.link.live}
-\alias{nb2.log.family.link.r.environment}
-\alias{nb2.log.family.link.r.closure}
-\title{Fused family-link plugin examples in four implementation variants}
+\alias{plugin.family.link.nb2.log.builtin}
+\alias{plugin.family.link.nb2.log.live}
+\alias{plugin.family.link.nb2.log.r.environment}
+\alias{plugin.family.link.nb2.log.r.closure}
+\alias{example.nb2.log.family.link}
+\alias{example.r.nb2.log.family.link}
+\alias{example.r.nb2.log.family.link.environment}
+\alias{example.r.nb2.log.family.link.closure}
+\title{Fused family-link plugins in four implementation variants}
 \usage{
-nb2.log.family.link.builtin(
+plugin.family.link.nb2.log.builtin(
   mu.min.cap = 1e-12,
   mu.max.cap = 1e+12,
   poisson.fallback.eps = 1e-08,
@@ -18,7 +22,7 @@ nb2.log.family.link.builtin(
   dispersion.upper.bound = 1e+12
 )
 
-nb2.log.family.link.live(
+plugin.family.link.nb2.log.live(
   mu.min.cap = 1e-12,
   mu.max.cap = 1e+12,
   poisson.fallback.eps = 1e-08,
@@ -28,7 +32,7 @@ nb2.log.family.link.live(
   cache = TRUE
 )
 
-nb2.log.family.link.r.environment(
+plugin.family.link.nb2.log.r.environment(
   mu.min.cap = 1e-12,
   mu.max.cap = 1e+12,
   poisson.fallback.eps = 1e-08,
@@ -37,7 +41,43 @@ nb2.log.family.link.r.environment(
   dispersion.upper.bound = 1e+12
 )
 
-nb2.log.family.link.r.closure(
+plugin.family.link.nb2.log.r.closure(
+  mu.min.cap = 1e-12,
+  mu.max.cap = 1e+12,
+  poisson.fallback.eps = 1e-08,
+  dispersion.initial = 1e-04,
+  dispersion.lower.bound = 1e-12,
+  dispersion.upper.bound = 1e+12
+)
+
+example.nb2.log.family.link(
+  mu.min.cap = 1e-12,
+  mu.max.cap = 1e+12,
+  poisson.fallback.eps = 1e-08,
+  dispersion.initial = 1e-04,
+  dispersion.lower.bound = 1e-12,
+  dispersion.upper.bound = 1e+12
+)
+
+example.r.nb2.log.family.link(
+  mu.min.cap = 1e-12,
+  mu.max.cap = 1e+12,
+  poisson.fallback.eps = 1e-08,
+  dispersion.initial = 1e-04,
+  dispersion.lower.bound = 1e-12,
+  dispersion.upper.bound = 1e+12
+)
+
+example.r.nb2.log.family.link.environment(
+  mu.min.cap = 1e-12,
+  mu.max.cap = 1e+12,
+  poisson.fallback.eps = 1e-08,
+  dispersion.initial = 1e-04,
+  dispersion.lower.bound = 1e-12,
+  dispersion.upper.bound = 1e+12
+)
+
+example.r.nb2.log.family.link.closure(
   mu.min.cap = 1e-12,
   mu.max.cap = 1e+12,
   poisson.fallback.eps = 1e-08,
@@ -47,13 +87,14 @@ nb2.log.family.link.r.closure(
 )
 }
 \arguments{
-\item{mu.min.cap, mu.max.cap}{Positive fixed mean clamps.}
+\item{mu.min.cap, mu.max.cap}{Positive fixed clamps for \code{mu}.}
 
-\item{poisson.fallback.eps}{Non-negative fixed NB2-to-Poisson threshold.}
+\item{poisson.fallback.eps}{Non-negative fixed NB2 threshold below which the
+Poisson limit is used.}
 
 \item{dispersion.initial}{Initial optimized NB2 dispersion.}
 
-\item{dispersion.lower.bound, dispersion.upper.bound}{Dispersion bounds.}
+\item{dispersion.lower.bound, dispersion.upper.bound}{Bounds for dispersion.}
 
 \item{cache}{Reuse the live-compiled object in the current R session.}
 }
@@ -61,18 +102,67 @@ nb2.log.family.link.r.closure(
 An external pointer to an \code{IEcountgmifsFamilyLink} child.
 }
 \description{
-A fused NB2-log implementation is available as built-in C++, live-compiled
-C++, R callbacks with an explicit environment, and R callbacks using a
-closure. A fused plugin supplies the eta-scale derivative directly and takes
-precedence over separately supplied \code{family} and \code{link_func} objects.
+A fused family-link plugin combines inverse-link, likelihood, and derivative
+calculations and may provide \verb{d(negative log-likelihood)/d(eta)} directly.
+It takes precedence over separately supplied \code{family} and \code{link} plugins.
+
+\code{\link[=r.family.link]{r.family.link()}} uses an optional
+\code{prepare(input, control, environment)} callback once before fitting, then
+\code{inverse(eta, link.parameters, environment)},
+\code{negloglik(y, mu, family.parameters, environment)}, and
+\code{grad(y, eta, mu, family.parameters, link.parameters, environment)}.
+The gradient callback returns all six named objects required by
+\code{IEcountgmifsFamilyLink}: \code{d_negloglik_d_mu}, \code{d_mu_d_eta},
+\code{d_mu_d_link_parameters}, \code{d_negloglik_d_eta},
+\code{d_negloglik_d_family_parameters}, and
+\code{d_negloglik_d_link_parameters}. Vector lengths and matrix dimensions are
+checked by the compiled adapter.
 }
+\section{Current NB2-log example}{
+
+Dispersion is one optimized family parameter with configurable initial value
+and bounds. The log link has zero optimized parameters. \code{mu.min.cap},
+\code{mu.max.cap}, and \code{poisson.fallback.eps} are fixed auxiliary configuration.
+The fused implementation supplies the stable eta-scale derivative
+\code{(mu - y) / (1 + dispersion * mu)} outside the Poisson fallback region.
+All NB2-log variants cache \code{lgamma(y + 1)} during \code{prepare()} and reuse it
+in subsequent likelihood evaluations.
+}
+
+\section{Four variants}{
+
+\code{.builtin()} uses \code{NB2LogFamilyLink} from \code{src/example.h}; \code{.live()} compiles
+a complete C++ child; \code{.r.environment()} retains explicit settings; and
+\code{.r.closure()} captures immutable settings lexically.
+}
+
+\section{Performance and thread safety}{
+
+Fused built-in or live C++ avoids R callbacks and can avoid intermediate
+chain-rule work. R variants are vectorized but execute on the R main thread.
+Mutable R state is not thread-safe. The native prepared cache is also
+fit-specific, so one plugin pointer must not be used by concurrent fits.
+}
+
 \examples{
 implementations <- list(
-  builtin = nb2.log.family.link.builtin(),
-  live = nb2.log.family.link.live(),
-  environment = nb2.log.family.link.r.environment(),
-  closure = nb2.log.family.link.r.closure()
+  builtin = plugin.family.link.nb2.log.builtin(),
+  live = plugin.family.link.nb2.log.live(),
+  environment = plugin.family.link.nb2.log.r.environment(),
+  closure = plugin.family.link.nb2.log.r.closure()
 )
+
+\dontrun{
+set.seed(1)
+X <- matrix(rnorm(80), 20, 4)
+y <- rnbinom(20, mu = 2, size = 4)
+fit <- ecountgmifs(
+  X = X,
+  y = y,
+  family.link = plugin.family.link.nb2.log.builtin(),
+  control = ecountgmifs.control(stagewise.iteration.max = 20L)
+)
+}
 
 }
 \seealso{
