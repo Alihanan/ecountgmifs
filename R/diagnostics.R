@@ -174,12 +174,18 @@ as.ecountgmifs <- function(
     xvar = c("iteration", "l1", "pseudo_r2"),
     criteria = NULL,
     show.criteria = TRUE,
-    selection.cex = 1.8,
+    selection.cex = 0.75,
     selection.lwd = 1.5,
     selection.line.alpha = 0.65,
     selection.point.alpha = 0.9,
     selection.points = c("active", "all", "none"),
     selection.labels = TRUE,
+    selection.label.cex = NULL,
+    selection.label.offset = 0.35,
+    criterion.legend = c("right", "none"),
+    criterion.legend.cex = 0.8,
+    criterion.legend.point.cex = 1.0,
+    criterion.legend.margin = 7,
     label = FALSE,
     label.n = 12L,
     label.cex = 0.7,
@@ -195,6 +201,7 @@ as.ecountgmifs <- function(
 ) {
   xvar <- match.arg(xvar)
   selection.points <- match.arg(selection.points)
+  criterion.legend <- match.arg(criterion.legend)
 
   beta_all <- .ecountgmifs.beta.matrix(object)
   x <- .ecountgmifs.path.x(object, xvar)
@@ -278,6 +285,29 @@ as.ecountgmifs <- function(
     "line.alpha"
   )
 
+  criterion_names <- if (isTRUE(show.criteria)) {
+    .ecountgmifs.match.criteria(
+      object,
+      criteria
+    )
+  } else {
+    character()
+  }
+
+  old_mar <- graphics::par("mar")
+  if (
+      identical(criterion.legend, "right") &&
+      length(criterion_names) > 0L
+  ) {
+    graphics::par(
+      mar = old_mar + c(0, 0, 0, criterion.legend.margin)
+    )
+    on.exit(
+      graphics::par(mar = old_mar),
+      add = TRUE
+    )
+  }
+
   graphics::matplot(
     x,
     beta,
@@ -291,12 +321,7 @@ as.ecountgmifs <- function(
     ...
   )
 
-  if (isTRUE(show.criteria)) {
-    criterion_names <- .ecountgmifs.match.criteria(
-      object,
-      criteria
-    )
-
+  if (length(criterion_names) > 0L) {
     styles <- .ecountgmifs.selection.styles(
       length(criterion_names)
     )
@@ -313,27 +338,95 @@ as.ecountgmifs <- function(
       "selection.point.alpha"
     )
 
-    # par("usr") is c(x_min, x_max, y_min, y_max).
-    # The previous implementation sliced elements 3:4 and then
-    # incorrectly requested element 4 of that two-element slice.
-    label_y <- graphics::par("usr")[[4L]]
+    selected_x_values <- vapply(
+      criterion_names,
+      function(criterion_name) {
+        .ecountgmifs.state.x(
+          object$path$best_criteria[[criterion_name]]$state,
+          xvar
+        )
+      },
+      numeric(1L)
+    )
 
+    usr <- graphics::par("usr")
+
+    criterion_label_cex <- selection.label.cex
+
+    if (is.null(criterion_label_cex)) {
+      # Match the text size used by the bottom-axis tick labels exactly.
+      criterion_label_cex <- graphics::par("cex.axis")
+    }
+
+    if (
+        length(criterion_label_cex) != 1L ||
+          is.na(criterion_label_cex) ||
+          !is.finite(criterion_label_cex) ||
+          criterion_label_cex <= 0
+    ) {
+      stop(
+        "`selection.label.cex` must be NULL or one positive finite number.",
+        call. = FALSE
+      )
+    }
+
+    # Place criterion names on the upper axis rather than inside the panel.
+    # Assign extra margin lines only when the rendered label intervals overlap.
+    label_lane <- integer(length(criterion_names))
+
+    if (isTRUE(selection.labels)) {
+      label_width <- graphics::strwidth(
+        criterion_names,
+        units = "user",
+        cex = criterion_label_cex,
+        font = 2L
+      )
+
+      x_padding <- 0.01 * diff(usr[1:2])
+      ordered <- order(selected_x_values)
+      lane_right <- numeric()
+
+      for (index in ordered) {
+        label_left <-
+          selected_x_values[[index]] - 0.5 * label_width[[index]]
+        label_right <-
+          selected_x_values[[index]] + 0.5 * label_width[[index]]
+
+        lane <- which(
+          lane_right + x_padding < label_left
+        )
+
+        if (length(lane) == 0L) {
+          lane <- length(lane_right) + 1L
+          lane_right <- c(lane_right, label_right)
+        } else {
+          lane <- lane[[1L]]
+          lane_right[[lane]] <- label_right
+        }
+
+        label_lane[[index]] <- lane - 1L
+      }
+    }
+
+    # Use segments rather than abline so selection lines are always clipped
+    # exactly to the plotting box, even when legends or labels use xpd = NA.
     for (i in seq_along(criterion_names)) {
       criterion_name <- criterion_names[[i]]
       selected <- object$path$best_criteria[[criterion_name]]$state
       selected_beta <- as.numeric(
         selected$predictors$parameters$beta
       )[plotted_indices]
-      selected_x <- .ecountgmifs.state.x(
-        selected,
-        xvar
-      )
+      selected_x <- selected_x_values[[i]]
 
-      graphics::abline(
-        v = selected_x,
+      graphics::segments(
+        x0 = selected_x,
+        y0 = usr[[3L]],
+        x1 = selected_x,
+        y1 = usr[[4L]],
         col = selection_line_col[[i]],
         lty = 3L,
-        lwd = selection.lwd
+        lwd = selection.lwd,
+        xpd = FALSE
       )
 
       point_indices <- switch(
@@ -351,36 +444,48 @@ as.ecountgmifs <- function(
           cex = selection.cex,
           col = styles$col[[i]],
           bg = selection_point_col[[i]],
-          lwd = selection.lwd
+          lwd = selection.lwd,
+          xpd = FALSE
         )
       }
 
       if (isTRUE(selection.labels)) {
-        graphics::text(
-          x = selected_x,
-          y = label_y,
-          labels = criterion_name,
-          pos = 2L + (i %% 2L),
-          cex = 0.65,
+        graphics::mtext(
+          text = criterion_name,
+          side = 3L,
+          at = selected_x,
+          line =
+            selection.label.offset +
+              0.8 * label_lane[[i]],
+          adj = 0.5,
+          cex = criterion_label_cex,
           col = styles$col[[i]],
-          xpd = NA
+          font = 2L,
+          padj = 0.5
         )
       }
     }
 
-    if (length(criterion_names) > 0L) {
+    if (identical(criterion.legend, "right")) {
+      usr <- graphics::par("usr")
+      legend_x <- usr[[2L]] + 0.035 * diff(usr[1:2])
+
       graphics::legend(
-        "topleft",
+        x = legend_x,
+        y = usr[[4L]],
+        xjust = 0,
+        yjust = 1,
         legend = criterion_names,
         col = styles$col,
         pch = styles$pch,
         pt.bg = selection_point_col,
-        pt.cex = selection.cex,
+        pt.cex = criterion.legend.point.cex,
         lty = 3L,
         lwd = selection.lwd,
         title = "Criterion selections",
         bty = "n",
-        cex = 0.8
+        cex = criterion.legend.cex,
+        xpd = NA
       )
     }
   }
@@ -1194,13 +1299,23 @@ print.summary.ecountgmifs.metrics <- function(
 #' @param show.criteria Draw criterion-selected points.
 #' @param criteria Optional subset of criterion names to mark.
 #' @param show.prior Draw prior-weight horizontal baselines.
-#' @param criterion.cex Criterion point size.
+#' @param criterion.cex Criterion point size in the plot.
+#' @param criterion.legend.point.cex Criterion symbol size in the outside
+#'   criterion legend.
 #' @param criterion.pch Criterion point symbols.
-#' @param criterion.lwd Criterion point and vertical-line width.
-#' @param label.criteria Label criterion points by name.
+#' @param criterion.lwd Criterion point-border width.
+#' @param criterion.line.lwd,criterion.line.alpha Criterion vertical-line style.
+#' @param criterion.label.cex,criterion.label.offset Criterion label size and
+#'   distance above the upper plot border. When `criterion.label.cex = NULL`,
+#'   labels use the same size as the axis tick text.
+#' @param label.criteria Label criterion selections on the upper plot axis.
+#' @param legend.position Whether to place legends outside the right side or
+#'   suppress them.
+#' @param legend.cex,legend.margin Outside-legend size and reserved margin.
 #' @param xlab,ylab,main Axis and title labels.
-#' @param lty,lwd,col Path line styling.
-#' @param prior.lty,prior.lwd Prior-baseline styling.
+#' @param xlim,ylim Axis limits.
+#' @param lty,lwd,line.alpha,col Path-line styling.
+#' @param prior.lty,prior.lwd,prior.alpha Prior-baseline styling.
 #' @param ... Additional arguments passed to [graphics::matplot()].
 #'
 #' @return `x` invisibly.
@@ -1212,21 +1327,34 @@ plot.ecountgmifs.metrics <- function(
     show.criteria = TRUE,
     criteria = NULL,
     show.prior = TRUE,
-    criterion.cex = 1.8,
+    criterion.cex = 0.9,
     criterion.pch = c(21L, 22L, 23L, 24L, 25L),
-    criterion.lwd = 1.5,
-    label.criteria = FALSE,
+    criterion.lwd = 1.4,
+    criterion.line.lwd = 1.2,
+    criterion.line.alpha = 0.6,
+    criterion.label.cex = NULL,
+    criterion.label.offset = 0.35,
+    label.criteria = TRUE,
+    legend.position = c("right", "none"),
+    legend.cex = 0.8,
+    criterion.legend.point.cex = 1.0,
+    legend.margin = 9,
     xlab = NULL,
     ylab = "Selection metric",
     main = "ecountgmifs selection metrics",
+    xlim = NULL,
+    ylim = c(0, 1),
     lty = 1,
-    lwd = 2,
+    lwd = 2.4,
+    line.alpha = 0.9,
     col = NULL,
-    prior.lty = 2,
-    prior.lwd = 1.5,
+    prior.lty = 5L,
+    prior.lwd = 1.8,
+    prior.alpha = 0.7,
     ...
 ) {
   xvar <- match.arg(xvar)
+  legend.position <- match.arg(legend.position)
 
   available_metrics <- c(
     "F1",
@@ -1255,81 +1383,33 @@ plot.ecountgmifs.metrics <- function(
     xlab <- .ecountgmifs.x.label(xvar)
   }
 
+  default_metric_colors <- c(
+    F1 = "#D55E00",
+    precision = "#009E73",
+    recall = "#0072B2",
+    specificity = "#CC79A7",
+    accuracy = "#56B4E9"
+  )
+
   if (is.null(col)) {
-    col <- seq_along(metrics) + 1L
+    col <- unname(default_metric_colors[metrics])
   } else {
     col <- rep_len(col, length(metrics))
   }
 
-  y <- as.matrix(
-    path[, metrics, drop = FALSE]
+  path_col <- .ecountgmifs.alpha.colors(
+    col,
+    line.alpha,
+    "line.alpha"
   )
 
-  graphics::matplot(
-    path[[xvar]],
-    y,
-    type = "l",
-    lty = lty,
-    lwd = lwd,
-    col = col,
-    ylim = c(0, 1),
-    xlab = xlab,
-    ylab = ylab,
-    main = main,
-    ...
+  prior_col <- .ecountgmifs.alpha.colors(
+    col,
+    prior.alpha,
+    "prior.alpha"
   )
 
-  metric_legend <- metrics
-  metric_legend_col <- col
-  metric_legend_lty <- rep(lty, length(metrics))
-  metric_legend_lwd <- rep(lwd, length(metrics))
-
-  if (isTRUE(show.prior) && !is.null(x$prior)) {
-    for (i in seq_along(metrics)) {
-      metric_name <- metrics[[i]]
-      prior_value <- as.numeric(
-        x$prior[[metric_name]]
-      )
-
-      if (length(prior_value) == 1L && is.finite(prior_value)) {
-        graphics::abline(
-          h = prior_value,
-          col = col[[i]],
-          lty = prior.lty,
-          lwd = prior.lwd
-        )
-      }
-    }
-
-    metric_legend <- c(
-      metric_legend,
-      paste0(metrics, " prior")
-    )
-    metric_legend_col <- c(
-      metric_legend_col,
-      col
-    )
-    metric_legend_lty <- c(
-      metric_legend_lty,
-      rep(prior.lty, length(metrics))
-    )
-    metric_legend_lwd <- c(
-      metric_legend_lwd,
-      rep(prior.lwd, length(metrics))
-    )
-  }
-
-  graphics::legend(
-    "bottomright",
-    legend = metric_legend,
-    col = metric_legend_col,
-    lty = metric_legend_lty,
-    lwd = metric_legend_lwd,
-    title = "Metrics",
-    bty = "n",
-    cex = 0.8
-  )
-
+  criterion_values <- NULL
   if (
       isTRUE(show.criteria) &&
       !is.null(x$criteria) &&
@@ -1358,61 +1438,292 @@ plot.ecountgmifs.metrics <- function(
         drop = FALSE
       ]
     }
+  }
 
-    criterion_names <- criterion_values$criterion
-    point_symbols <- rep_len(
+  x_values <- as.numeric(path[[xvar]])
+
+  if (is.null(xlim)) {
+    x_for_range <- x_values
+
+    if (!is.null(criterion_values)) {
+      x_for_range <- c(
+        x_for_range,
+        as.numeric(criterion_values[[xvar]])
+      )
+    }
+
+    xlim <- range(x_for_range, finite = TRUE)
+    x_span <- diff(xlim)
+
+    if (!is.finite(x_span) || x_span == 0) {
+      x_span <- max(1, abs(xlim[[1L]]))
+    }
+
+    xlim <- xlim + c(-1, 1) * 0.02 * x_span
+  }
+
+  y <- as.matrix(
+    path[, metrics, drop = FALSE]
+  )
+
+  old_mar <- graphics::par("mar")
+  if (identical(legend.position, "right")) {
+    graphics::par(
+      mar = old_mar + c(0, 0, 0, legend.margin)
+    )
+    on.exit(
+      graphics::par(mar = old_mar),
+      add = TRUE
+    )
+  }
+
+  graphics::matplot(
+    x_values,
+    y,
+    type = "l",
+    lty = lty,
+    lwd = lwd,
+    col = path_col,
+    xlim = xlim,
+    ylim = ylim,
+    xlab = xlab,
+    ylab = ylab,
+    main = main,
+    ...
+  )
+
+  if (isTRUE(show.prior) && !is.null(x$prior)) {
+    for (i in seq_along(metrics)) {
+      metric_name <- metrics[[i]]
+      prior_value <- as.numeric(
+        x$prior[[metric_name]]
+      )
+
+      if (length(prior_value) == 1L && is.finite(prior_value)) {
+        usr <- graphics::par("usr")
+
+        graphics::segments(
+          x0 = usr[[1L]],
+          y0 = prior_value,
+          x1 = usr[[2L]],
+          y1 = prior_value,
+          col = prior_col[[i]],
+          lty = prior.lty,
+          lwd = prior.lwd,
+          xpd = FALSE
+        )
+      }
+    }
+  }
+
+  criterion_names <- character()
+  criterion_styles <- NULL
+
+  if (!is.null(criterion_values)) {
+    criterion_names <- as.character(
+      criterion_values$criterion
+    )
+
+    criterion_styles <- .ecountgmifs.selection.styles(
+      length(criterion_names)
+    )
+
+    criterion_styles$pch <- rep_len(
       criterion.pch,
       length(criterion_names)
     )
 
+    criterion_line_col <- .ecountgmifs.alpha.colors(
+      criterion_styles$col,
+      criterion.line.alpha,
+      "criterion.line.alpha"
+    )
+
+    selected_x_values <- as.numeric(
+      criterion_values[[xvar]]
+    )
+
+    usr <- graphics::par("usr")
+
+    criterion_label_cex <- criterion.label.cex
+
+    if (is.null(criterion_label_cex)) {
+      # Match the text size used by the bottom-axis tick labels exactly.
+      criterion_label_cex <- graphics::par("cex.axis")
+    }
+
+    if (
+        length(criterion_label_cex) != 1L ||
+          is.na(criterion_label_cex) ||
+          !is.finite(criterion_label_cex) ||
+          criterion_label_cex <= 0
+    ) {
+      stop(
+        "`criterion.label.cex` must be NULL or one positive finite number.",
+        call. = FALSE
+      )
+    }
+
+    # Place criterion names on the upper axis. Use additional margin lanes only
+    # when the rendered label intervals overlap.
+    label_lane <- integer(length(criterion_names))
+
+    if (isTRUE(label.criteria)) {
+      label_width <- graphics::strwidth(
+        criterion_names,
+        units = "user",
+        cex = criterion_label_cex,
+        font = 2L
+      )
+
+      x_padding <- 0.01 * diff(usr[1:2])
+      ordered <- order(selected_x_values)
+      lane_right <- numeric()
+
+      for (index in ordered) {
+        label_left <-
+          selected_x_values[[index]] - 0.5 * label_width[[index]]
+        label_right <-
+          selected_x_values[[index]] + 0.5 * label_width[[index]]
+
+        lane <- which(
+          lane_right + x_padding < label_left
+        )
+
+        if (length(lane) == 0L) {
+          lane <- length(lane_right) + 1L
+          lane_right <- c(lane_right, label_right)
+        } else {
+          lane <- lane[[1L]]
+          lane_right[[lane]] <- label_right
+        }
+
+        label_lane[[index]] <- lane - 1L
+      }
+    }
+
     for (criterion_index in seq_along(criterion_names)) {
+      selected_x <- selected_x_values[[criterion_index]]
+
+      # Clip criterion lines to the plotting box. This prevents them from
+      # extending through the title, labels, or the outside legends.
+      graphics::segments(
+        x0 = selected_x,
+        y0 = usr[[3L]],
+        x1 = selected_x,
+        y1 = usr[[4L]],
+        col = criterion_line_col[[criterion_index]],
+        lty = 3L,
+        lwd = criterion.line.lwd,
+        xpd = FALSE
+      )
+
       for (metric_index in seq_along(metrics)) {
         metric_name <- metrics[[metric_index]]
 
         graphics::points(
-          criterion_values[[xvar]][[criterion_index]],
+          selected_x,
           criterion_values[[metric_name]][[criterion_index]],
-          pch = point_symbols[[criterion_index]],
+          pch = criterion_styles$pch[[criterion_index]],
           cex = criterion.cex,
-          col = col[[metric_index]],
-          bg = "white",
-          lwd = criterion.lwd
+          col = criterion_styles$col[[criterion_index]],
+          bg = path_col[[metric_index]],
+          lwd = criterion.lwd,
+          xpd = FALSE
         )
       }
 
-      graphics::abline(
-        v = criterion_values[[xvar]][[criterion_index]],
-        col = "grey70",
-        lty = 3L,
-        lwd = criterion.lwd
-      )
-
       if (isTRUE(label.criteria)) {
-        label_metric <- if ("F1" %in% metrics) "F1" else metrics[[1L]]
-
-        graphics::text(
-          criterion_values[[xvar]][[criterion_index]],
-          criterion_values[[label_metric]][[criterion_index]],
-          labels = criterion_names[[criterion_index]],
-          pos = 3L,
-          cex = 0.7,
-          xpd = NA
+        graphics::mtext(
+          text = criterion_names[[criterion_index]],
+          side = 3L,
+          at = selected_x,
+          line =
+            criterion.label.offset +
+              0.8 * label_lane[[criterion_index]],
+          adj = 0.5,
+          cex = criterion_label_cex,
+          col = criterion_styles$col[[criterion_index]],
+          font = 2L,
+          padj = 0.5
         )
       }
     }
+  }
 
-    graphics::legend(
-      "topleft",
-      legend = criterion_names,
-      pch = point_symbols,
-      pt.bg = "white",
-      pt.cex = criterion.cex,
-      col = "black",
-      title = "Criterion selections",
+  if (identical(legend.position, "right")) {
+    usr <- graphics::par("usr")
+    x_span <- diff(usr[1:2])
+    y_span <- diff(usr[3:4])
+    legend_x <- usr[[2L]] + 0.04 * x_span
+
+    metric_labels <- metrics
+    metric_colors <- path_col
+    metric_lty <- rep(lty, length(metrics))
+    metric_lwd <- rep(lwd, length(metrics))
+
+    if (isTRUE(show.prior) && !is.null(x$prior)) {
+      metric_labels <- c(
+        paste0(metrics, " path"),
+        paste0(metrics, " prior")
+      )
+      metric_colors <- c(path_col, prior_col)
+      metric_lty <- c(
+        rep(lty, length(metrics)),
+        rep(prior.lty, length(metrics))
+      )
+      metric_lwd <- c(
+        rep(lwd, length(metrics)),
+        rep(prior.lwd, length(metrics))
+      )
+    }
+
+    metric_legend <- graphics::legend(
+      x = legend_x,
+      y = usr[[4L]],
+      xjust = 0,
+      yjust = 1,
+      legend = metric_labels,
+      col = metric_colors,
+      lty = metric_lty,
+      lwd = metric_lwd,
+      title = "Metrics",
       bty = "n",
-      cex = 0.75
+      cex = legend.cex,
+      xpd = NA
     )
+
+    if (length(criterion_names) > 0L) {
+      criterion_legend_y <- usr[[4L]] -
+        metric_legend$rect$h -
+        0.06 * y_span
+
+      criterion_legend_fill <- .ecountgmifs.alpha.colors(
+        criterion_styles$col,
+        0.9,
+        "criterion legend point alpha"
+      )
+
+      graphics::legend(
+        x = legend_x,
+        y = criterion_legend_y,
+        xjust = 0,
+        yjust = 1,
+        legend = criterion_names,
+        col = criterion_styles$col,
+        pch = criterion_styles$pch,
+        pt.bg = criterion_legend_fill,
+        pt.cex = criterion.legend.point.cex,
+        lty = 3L,
+        lwd = criterion.lwd,
+        title = "Criterion selections",
+        bty = "n",
+        cex = legend.cex,
+        xpd = NA
+      )
+    }
   }
 
   invisible(x)
 }
+

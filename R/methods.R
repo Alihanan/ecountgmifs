@@ -806,6 +806,177 @@
 }
 
 
+.ecountgmifs.summary.model <- function(
+    object,
+    state,
+    zero.tol,
+    criterion = NULL,
+    criterion.value = NA_real_
+) {
+  parameters <- .ecountgmifs.state.parameters(state)
+
+  predictor_names <- .ecountgmifs.predictor.names(
+    object,
+    length(parameters$beta)
+  )
+
+  names(parameters$beta) <- predictor_names
+  names(parameters$theta) <- .ecountgmifs.unpenalized.names(
+    object,
+    length(parameters$theta)
+  )
+
+  nonzero <- abs(parameters$beta) > zero.tol
+
+  coefficient_table <- data.frame(
+    term = predictor_names[nonzero],
+    estimate = parameters$beta[nonzero],
+    absolute_estimate = abs(parameters$beta[nonzero]),
+    stringsAsFactors = FALSE
+  )
+
+  if (nrow(coefficient_table) > 0L) {
+    coefficient_table <- coefficient_table[
+      order(
+        coefficient_table$absolute_estimate,
+        decreasing = TRUE
+      ),
+      ,
+      drop = FALSE
+    ]
+  }
+
+  selected_criteria <- if (
+      is.null(state$criteria) ||
+      length(state$criteria) == 0L
+  ) {
+    data.frame(
+      criterion = character(),
+      value = numeric(),
+      stringsAsFactors = FALSE
+    )
+  } else {
+    data.frame(
+      criterion = names(state$criteria),
+      value = as.numeric(state$criteria),
+      stringsAsFactors = FALSE
+    )
+  }
+
+  list(
+    criterion = criterion,
+    criterion_value = as.numeric(criterion.value),
+    iteration = as.integer(state$iteration),
+    negloglik = as.numeric(state$negloglik),
+    loglik = -as.numeric(state$negloglik),
+    pseudo_r2 = as.numeric(state$pseudo_r2),
+    nonzero = sum(nonzero),
+    theta = parameters$theta,
+    family_parameters = parameters$family_parameters,
+    link_parameters = parameters$link_parameters,
+    coefficients = coefficient_table,
+    selected_criteria = selected_criteria
+  )
+}
+
+
+.ecountgmifs.print.summary.model <- function(
+    model,
+    heading,
+    digits,
+    max.coef,
+    show.criterion.value = FALSE,
+    criterion.values.heading = "Criterion values at this state:"
+) {
+  cat("\n", heading, "\n", sep = "")
+
+  if (
+      isTRUE(show.criterion.value) &&
+      is.finite(model$criterion_value)
+  ) {
+    cat(
+      "  Criterion value:         ",
+      format(model$criterion_value, digits = digits),
+      "\n",
+      sep = ""
+    )
+  }
+
+  cat("  Iteration:               ", model$iteration, "\n", sep = "")
+  cat(
+    "  Negative log-likelihood: ",
+    format(model$negloglik, digits = digits),
+    "\n",
+    sep = ""
+  )
+  cat(
+    "  Log-likelihood:          ",
+    format(model$loglik, digits = digits),
+    "\n",
+    sep = ""
+  )
+  cat(
+    "  Pseudo-R2:               ",
+    format(model$pseudo_r2, digits = digits),
+    "\n",
+    sep = ""
+  )
+  cat("  Nonzero beta:            ", model$nonzero, "\n", sep = "")
+
+  if (length(model$theta) > 0L) {
+    cat("\nUnpenalized coefficients:\n")
+    print(model$theta, digits = digits)
+  }
+
+  if (length(model$family_parameters) > 0L) {
+    cat("\nFamily parameters:\n")
+    print(model$family_parameters, digits = digits)
+  }
+
+  if (length(model$link_parameters) > 0L) {
+    cat("\nLink parameters:\n")
+    print(model$link_parameters, digits = digits)
+  }
+
+  cat("\nPenalized coefficients:\n")
+
+  if (nrow(model$coefficients) == 0L) {
+    cat("  No nonzero penalized coefficients.\n")
+  } else {
+    shown <- utils::head(
+      model$coefficients[, c("term", "estimate"), drop = FALSE],
+      max.coef
+    )
+
+    print(
+      shown,
+      row.names = FALSE,
+      digits = digits
+    )
+
+    if (nrow(model$coefficients) > nrow(shown)) {
+      cat(
+        "... ",
+        nrow(model$coefficients) - nrow(shown),
+        " additional nonzero coefficients not shown\n",
+        sep = ""
+      )
+    }
+  }
+
+  if (nrow(model$selected_criteria) > 0L) {
+    cat("\n", criterion.values.heading, "\n", sep = "")
+    print(
+      model$selected_criteria,
+      row.names = FALSE,
+      digits = digits
+    )
+  }
+
+  invisible(model)
+}
+
+
 #' Extract an ecountgmifs coefficient path or selected coefficient vector
 #'
 #' Without `criterion` or `iteration`, this returns the saved coefficient path
@@ -1010,38 +1181,39 @@ summary.ecountgmifs <- function(
   )
 
   state <- selected$state
-  parameters <- .ecountgmifs.state.parameters(state)
 
-  predictor_names <- .ecountgmifs.predictor.names(
-    object,
-    length(parameters$beta)
+  selected_model <- .ecountgmifs.summary.model(
+    object = object,
+    state = state,
+    zero.tol = zero.tol,
+    criterion = selected$criterion,
+    criterion.value = if (is.null(selected$criterion)) {
+      NA_real_
+    } else {
+      as.numeric(
+        object$path$best_criteria[[selected$criterion]]$value
+      )
+    }
   )
 
-  names(parameters$beta) <- predictor_names
-  names(parameters$theta) <- .ecountgmifs.unpenalized.names(
-    object,
-    length(parameters$theta)
+  best_criteria <- .ecountgmifs.best.criteria(object)
+
+  criterion_models <- lapply(
+    names(best_criteria),
+    function(criterion_name) {
+      selected_criterion <- best_criteria[[criterion_name]]
+
+      .ecountgmifs.summary.model(
+        object = object,
+        state = selected_criterion$state,
+        zero.tol = zero.tol,
+        criterion = criterion_name,
+        criterion.value = selected_criterion$value
+      )
+    }
   )
 
-  nonzero <- abs(parameters$beta) > zero.tol
-
-  coefficient_table <- data.frame(
-    term = predictor_names[nonzero],
-    estimate = parameters$beta[nonzero],
-    absolute_estimate = abs(parameters$beta[nonzero]),
-    stringsAsFactors = FALSE
-  )
-
-  if (nrow(coefficient_table) > 0L) {
-    coefficient_table <- coefficient_table[
-      order(
-        coefficient_table$absolute_estimate,
-        decreasing = TRUE
-      ),
-      ,
-      drop = FALSE
-    ]
-  }
+  names(criterion_models) <- names(best_criteria)
 
   metric_summary <- NULL
 
@@ -1095,32 +1267,19 @@ summary.ecountgmifs <- function(
     },
     selected_label = selected$label,
     selected_criterion = selected$criterion,
-    iteration = as.integer(state$iteration),
-    negloglik = as.numeric(state$negloglik),
-    loglik = -as.numeric(state$negloglik),
-    pseudo_r2 = as.numeric(state$pseudo_r2),
-    nonzero = sum(nonzero),
-    theta = parameters$theta,
-    family_parameters = parameters$family_parameters,
-    link_parameters = parameters$link_parameters,
-    coefficients = coefficient_table,
+    selected_model = selected_model,
+    iteration = selected_model$iteration,
+    negloglik = selected_model$negloglik,
+    loglik = selected_model$loglik,
+    pseudo_r2 = selected_model$pseudo_r2,
+    nonzero = selected_model$nonzero,
+    theta = selected_model$theta,
+    family_parameters = selected_model$family_parameters,
+    link_parameters = selected_model$link_parameters,
+    coefficients = selected_model$coefficients,
     max_coef = as.integer(max.coef),
-    selected_criteria = if (
-        is.null(state$criteria) ||
-        length(state$criteria) == 0L
-    ) {
-      data.frame(
-        criterion = character(),
-        value = numeric(),
-        stringsAsFactors = FALSE
-      )
-    } else {
-      data.frame(
-        criterion = names(state$criteria),
-        value = as.numeric(state$criteria),
-        stringsAsFactors = FALSE
-      )
-    },
+    selected_criteria = selected_model$selected_criteria,
+    criterion_models = criterion_models,
     criteria = .ecountgmifs.criterion.table(object),
     metrics = metric_summary,
     timing = c(
@@ -1182,71 +1341,72 @@ print.summary.ecountgmifs <- function(
     }
   }
 
-  cat("\nSelected state: ", x$selected_label, "\n", sep = "")
-  cat("  Iteration:       ", x$iteration, "\n", sep = "")
-  cat("  Negative log-likelihood: ", format(x$negloglik, digits = digits), "\n", sep = "")
-  cat("  Log-likelihood:          ", format(x$loglik, digits = digits), "\n", sep = "")
-  cat("  Pseudo-R2:       ", format(x$pseudo_r2, digits = digits), "\n", sep = "")
-  cat("  Nonzero beta:    ", x$nonzero, "\n", sep = "")
+  if (
+      !is.null(x$criterion_models) &&
+      length(x$criterion_models) > 0L
+  ) {
+    cat("\nCriterion-selected models:\n")
 
-  if (length(x$theta) > 0L) {
-    cat("\nUnpenalized coefficients:\n")
-    print(x$theta, digits = digits)
-  }
+    for (criterion_name in names(x$criterion_models)) {
+      criterion_model <- x$criterion_models[[criterion_name]]
 
-  if (length(x$family_parameters) > 0L) {
-    cat("\nFamily parameters:\n")
-    print(x$family_parameters, digits = digits)
-  }
-
-  if (length(x$link_parameters) > 0L) {
-    cat("\nLink parameters:\n")
-    print(x$link_parameters, digits = digits)
-  }
-
-  cat("\nPenalized coefficients:\n")
-
-  if (nrow(x$coefficients) == 0L) {
-    cat("  No nonzero penalized coefficients.\n")
-  } else {
-    shown <- utils::head(
-      x$coefficients[, c("term", "estimate"), drop = FALSE],
-      x$max_coef
-    )
-
-    print(
-      shown,
-      row.names = FALSE,
-      digits = digits
-    )
-
-    if (nrow(x$coefficients) > nrow(shown)) {
-      cat(
-        "... ",
-        nrow(x$coefficients) - nrow(shown),
-        " additional nonzero coefficients not shown\n",
-        sep = ""
+      .ecountgmifs.print.summary.model(
+        model = criterion_model,
+        heading = paste0(
+          criterion_name,
+          "-selected model:"
+        ),
+        digits = digits,
+        max.coef = x$max_coef,
+        show.criterion.value = TRUE
       )
     }
   }
 
-  if (nrow(x$selected_criteria) > 0L) {
-    cat("\nCriterion values at summarized state:\n")
-    print(
-      x$selected_criteria,
-      row.names = FALSE,
-      digits = digits
+  selected_model <- x$selected_model
+
+  if (is.null(selected_model)) {
+    # Compatibility with summary objects created by an earlier package build.
+    selected_model <- list(
+      criterion = x$selected_criterion,
+      criterion_value = NA_real_,
+      iteration = x$iteration,
+      negloglik = x$negloglik,
+      loglik = x$loglik,
+      pseudo_r2 = x$pseudo_r2,
+      nonzero = x$nonzero,
+      theta = x$theta,
+      family_parameters = x$family_parameters,
+      link_parameters = x$link_parameters,
+      coefficients = x$coefficients,
+      selected_criteria = x$selected_criteria
     )
   }
 
-  if (nrow(x$criteria) > 0L) {
-    cat("\nCriterion-selected states:\n")
-    print(
-      x$criteria,
-      row.names = FALSE,
-      digits = digits
-    )
-  }
+  selected_is_terminal <- identical(
+    x$selected_label,
+    "terminal state"
+  )
+
+  .ecountgmifs.print.summary.model(
+    model = selected_model,
+    heading = if (selected_is_terminal) {
+      "Terminal (last path) state:"
+    } else {
+      paste0(
+        "Selected state: ",
+        x$selected_label
+      )
+    },
+    digits = digits,
+    max.coef = x$max_coef,
+    show.criterion.value = FALSE,
+    criterion.values.heading = if (selected_is_terminal) {
+      "Criterion values at terminal (last path) state:"
+    } else {
+      "Criterion values at this state:"
+    }
+  )
 
   if (!is.null(x$metrics)) {
     cat("\nSelection metrics for summarized state:\n")
@@ -1300,13 +1460,15 @@ print.summary.ecountgmifs <- function(
 #' @param x An `ecountgmifs` fit.
 #' @param type Plot type: coefficient paths, criterion paths, or ground-truth
 #'   metrics.
-#' @param ground.truth Required for `type = "metrics"`.
+#' @param ground.truth Ground-truth selection vector. When supplied and `type`
+#'   is omitted, the metric-path plot is selected automatically.
 #' @param zero.tol,zero.division,prior.selected,prior.weight.vec,prior.cutoff,prior.direction
 #'   Arguments used to construct an [ecountgmifs.metrics()] object.
 #' @param ... Arguments passed to the corresponding plotting helper.
 #'
-#' @return The input fit invisibly, except for `type = "metrics"`, which returns
-#'   the generated `ecountgmifs.metrics` object invisibly.
+#' @return The input fit invisibly, except for a metric-path plot, which plots
+#'   and returns the generated `ecountgmifs.metrics` object invisibly. Therefore
+#'   `metrics <- plot(fit, ground.truth = truth)` both plots and captures it.
 #' @export
 plot.ecountgmifs <- function(
     x,
@@ -1320,7 +1482,11 @@ plot.ecountgmifs <- function(
     prior.direction = c("lower", "higher"),
     ...
 ) {
-  type <- match.arg(type)
+  if (missing(type) && !is.null(ground.truth)) {
+    type <- "metrics"
+  } else {
+    type <- match.arg(type)
+  }
 
   switch(
     type,

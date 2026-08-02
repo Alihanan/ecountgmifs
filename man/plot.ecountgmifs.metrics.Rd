@@ -11,18 +11,30 @@
   show.criteria = TRUE,
   criteria = NULL,
   show.prior = TRUE,
-  criterion.cex = 1.8,
+  criterion.cex = 0.9,
   criterion.pch = c(21L, 22L, 23L, 24L, 25L),
-  criterion.lwd = 1.5,
-  label.criteria = FALSE,
+  criterion.lwd = 1.4,
+  criterion.line.lwd = 1.2,
+  criterion.line.alpha = 0.6,
+  criterion.label.cex = NULL,
+  criterion.label.offset = 0.35,
+  label.criteria = TRUE,
+  legend.position = c("right", "none"),
+  legend.cex = 0.8,
+  criterion.legend.point.cex = 1,
+  legend.margin = 9,
   xlab = NULL,
   ylab = "Selection metric",
   main = "ecountgmifs selection metrics",
+  xlim = NULL,
+  ylim = c(0, 1),
   lty = 1,
-  lwd = 2,
+  lwd = 2.4,
+  line.alpha = 0.9,
   col = NULL,
-  prior.lty = 2,
-  prior.lwd = 1.5,
+  prior.lty = 5L,
+  prior.lwd = 1.8,
+  prior.alpha = 0.7,
   ...
 )
 }
@@ -39,19 +51,35 @@
 
 \item{show.prior}{Draw prior-weight horizontal baselines.}
 
-\item{criterion.cex}{Criterion point size.}
+\item{criterion.cex}{Criterion point size in the plot.}
 
 \item{criterion.pch}{Criterion point symbols.}
 
-\item{criterion.lwd}{Criterion point and vertical-line width.}
+\item{criterion.lwd}{Criterion point-border width.}
 
-\item{label.criteria}{Label criterion points by name.}
+\item{criterion.line.lwd, criterion.line.alpha}{Criterion vertical-line style.}
+
+\item{criterion.label.cex, criterion.label.offset}{Criterion label size and
+distance above the upper plot border. When \code{criterion.label.cex = NULL},
+labels use the same size as the axis tick text.}
+
+\item{label.criteria}{Label criterion selections on the upper plot axis.}
+
+\item{legend.position}{Whether to place legends outside the right side or
+suppress them.}
+
+\item{legend.cex, legend.margin}{Outside-legend size and reserved margin.}
+
+\item{criterion.legend.point.cex}{Criterion symbol size in the outside
+criterion legend.}
 
 \item{xlab, ylab, main}{Axis and title labels.}
 
-\item{lty, lwd, col}{Path line styling.}
+\item{xlim, ylim}{Axis limits.}
 
-\item{prior.lty, prior.lwd}{Prior-baseline styling.}
+\item{lty, lwd, line.alpha, col}{Path-line styling.}
+
+\item{prior.lty, prior.lwd, prior.alpha}{Prior-baseline styling.}
 
 \item{...}{Additional arguments passed to \code{\link[graphics:matplot]{graphics::matplot()}}.}
 }

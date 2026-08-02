@@ -7,12 +7,328 @@
 #include <cstdint>
 #include "context.h"
 
+#include <string>
+#include <unordered_set>
+
+namespace
+{
+
+Rcpp::CharacterVector matrix_column_names(
+    SEXP matrix_sexp,
+    const char* fallback_prefix
+)
+{
+  if (!Rf_isMatrix(matrix_sexp)) {
+    Rcpp::stop("%s must be a matrix", fallback_prefix);
+  }
+
+  const Rcpp::RObject matrix(matrix_sexp);
+  const Rcpp::IntegerVector dimensions =
+    matrix.attr("dim");
+
+  const R_xlen_t column_count =
+    static_cast<R_xlen_t>(dimensions[1]);
+
+  Rcpp::CharacterVector raw_names;
+
+  SEXP dimnames_sexp = matrix.attr("dimnames");
+
+  if (!Rf_isNull(dimnames_sexp)) {
+    const Rcpp::List dimnames(dimnames_sexp);
+
+    if (
+        dimnames.size() >= 2 &&
+        !Rf_isNull(dimnames[1])
+    ) {
+      raw_names = Rcpp::CharacterVector(dimnames[1]);
+    }
+  }
+
+  Rcpp::CharacterVector result(column_count);
+  std::unordered_set<std::string> used_names;
+
+  for (R_xlen_t i = 0; i < column_count; ++i) {
+    std::string base_name;
+
+    if (i < raw_names.size()) {
+      SEXP raw_name = raw_names[i];
+
+      if (raw_name != NA_STRING) {
+        base_name = Rcpp::as<std::string>(raw_name);
+      }
+    }
+
+    if (base_name.empty()) {
+      base_name =
+        std::string(fallback_prefix) +
+        std::to_string(i + 1);
+    }
+
+    std::string unique_name = base_name;
+    std::size_t suffix = 1;
+
+    while (used_names.find(unique_name) != used_names.end()) {
+      unique_name =
+        base_name + "." +
+        std::to_string(suffix);
+      ++suffix;
+    }
+
+    used_names.insert(unique_name);
+    result[i] = unique_name;
+  }
+
+  return result;
+}
+
+
+void set_vector_names(
+    Rcpp::List& owner,
+    const char* field,
+    const Rcpp::CharacterVector& names
+)
+{
+  if (
+      !owner.containsElementNamed(field) ||
+      Rf_isNull(owner[field])
+  ) {
+    return;
+  }
+
+  Rcpp::RObject value = owner[field];
+
+  if (Rf_xlength(value) != names.size()) {
+    return;
+  }
+
+  value.attr("names") = Rcpp::clone(names);
+  owner[field] = value;
+}
+
+
+Rcpp::List name_state_parameters(
+    Rcpp::List state,
+    const Rcpp::CharacterVector& predictor_names,
+    const Rcpp::CharacterVector& unpenalized_names
+)
+{
+  if (
+      !state.containsElementNamed("predictors") ||
+      Rf_isNull(state["predictors"])
+  ) {
+    return state;
+  }
+
+  Rcpp::List predictors = state["predictors"];
+
+  if (
+      predictors.containsElementNamed("parameters") &&
+      !Rf_isNull(predictors["parameters"])
+  ) {
+    Rcpp::List parameters = predictors["parameters"];
+
+    set_vector_names(
+      parameters,
+      "beta",
+      predictor_names
+    );
+
+    set_vector_names(
+      parameters,
+      "theta",
+      unpenalized_names
+    );
+
+    predictors["parameters"] = parameters;
+  }
+
+  set_vector_names(
+    predictors,
+    "active_set",
+    predictor_names
+  );
+
+  state["predictors"] = predictors;
+  return state;
+}
+
+
+void name_vector_list(
+    Rcpp::List& owner,
+    const char* field,
+    const Rcpp::CharacterVector& names
+)
+{
+  if (
+      !owner.containsElementNamed(field) ||
+      Rf_isNull(owner[field])
+  ) {
+    return;
+  }
+
+  Rcpp::List values = owner[field];
+
+  for (R_xlen_t i = 0; i < values.size(); ++i) {
+    if (Rf_isNull(values[i])) {
+      continue;
+    }
+
+    Rcpp::RObject value = values[i];
+
+    if (Rf_xlength(value) == names.size()) {
+      value.attr("names") = Rcpp::clone(names);
+      values[i] = value;
+    }
+  }
+
+  owner[field] = values;
+}
+
+
+void decorate_output_parameter_names(
+    Rcpp::List& output,
+    const Rcpp::CharacterVector& predictor_names,
+    const Rcpp::CharacterVector& unpenalized_names
+)
+{
+  if (output.containsElementNamed("input")) {
+    Rcpp::List input = output["input"];
+
+    input["predictor_names"] =
+      Rcpp::clone(predictor_names);
+
+    input["unpenalized_names"] =
+      Rcpp::clone(unpenalized_names);
+
+    set_vector_names(
+      input,
+      "weight_vec",
+      predictor_names
+    );
+
+    if (
+        input.containsElementNamed("X") &&
+        !Rf_isNull(input["X"])
+    ) {
+      Rcpp::NumericMatrix X = input["X"];
+      Rcpp::colnames(X) = predictor_names;
+      input["X"] = X;
+    }
+
+    if (
+        input.containsElementNamed("w") &&
+        !Rf_isNull(input["w"])
+    ) {
+      Rcpp::NumericMatrix w = input["w"];
+      Rcpp::colnames(w) = unpenalized_names;
+      input["w"] = w;
+    }
+
+    output["input"] = input;
+  }
+
+  if (
+      output.containsElementNamed("terminal_state") &&
+      !Rf_isNull(output["terminal_state"])
+  ) {
+    output["terminal_state"] =
+      name_state_parameters(
+        Rcpp::List(output["terminal_state"]),
+        predictor_names,
+        unpenalized_names
+      );
+  }
+
+  if (
+      !output.containsElementNamed("path") ||
+      Rf_isNull(output["path"])
+  ) {
+    return;
+  }
+
+  Rcpp::List path = output["path"];
+
+  set_vector_names(
+    path,
+    "null_theta",
+    unpenalized_names
+  );
+
+  set_vector_names(
+    path,
+    "last_saved_active_set",
+    predictor_names
+  );
+
+  if (
+      path.containsElementNamed("states") &&
+      !Rf_isNull(path["states"])
+  ) {
+    Rcpp::List states = path["states"];
+
+    name_vector_list(
+      states,
+      "beta",
+      predictor_names
+    );
+
+    name_vector_list(
+      states,
+      "theta",
+      unpenalized_names
+    );
+
+    name_vector_list(
+      states,
+      "active_set",
+      predictor_names
+    );
+
+    path["states"] = states;
+  }
+
+  if (
+      path.containsElementNamed("best_criteria") &&
+      !Rf_isNull(path["best_criteria"])
+  ) {
+    Rcpp::List best_criteria = path["best_criteria"];
+
+    for (R_xlen_t i = 0; i < best_criteria.size(); ++i) {
+      if (Rf_isNull(best_criteria[i])) {
+        continue;
+      }
+
+      Rcpp::List best = best_criteria[i];
+
+      if (
+          best.containsElementNamed("state") &&
+          !Rf_isNull(best["state"])
+      ) {
+        best["state"] =
+          name_state_parameters(
+            Rcpp::List(best["state"]),
+            predictor_names,
+            unpenalized_names
+          );
+      }
+
+      best_criteria[i] = best;
+    }
+
+    path["best_criteria"] = best_criteria;
+  }
+
+  output["path"] = path;
+}
+
+} // anonymous namespace
+
 
 // [[Rcpp::export]]
 Rcpp::List ecountgmifs_cpp(
-    arma::mat X,
+    SEXP X,
     arma::vec y,
-    arma::mat w,
+    SEXP w,
     arma::vec offset,
 
     const arma::vec& weight_vec,
@@ -83,6 +399,24 @@ Rcpp::List ecountgmifs_cpp(
 
     SEXP family_link = R_NilValue
 ) {
+
+  const Rcpp::CharacterVector predictor_names =
+    matrix_column_names(
+      X,
+      "X"
+    );
+
+  const Rcpp::CharacterVector unpenalized_names =
+    matrix_column_names(
+      w,
+      "theta"
+    );
+
+  const arma::mat X_arma =
+    Rcpp::as<arma::mat>(X);
+
+  const arma::mat w_arma =
+    Rcpp::as<arma::mat>(w);
 
   const auto same_nlopt_settings = [](
       int algorithm_a,
@@ -218,9 +552,9 @@ Rcpp::List ecountgmifs_cpp(
   };
 
   EcountgmifsContextInternal ctx(
-      X,
+      X_arma,
       y,
-      w,
+      w_arma,
       offset,
 
       weight_vec,
@@ -261,6 +595,12 @@ Rcpp::List ecountgmifs_cpp(
   ctx.stagewise.fit();
 
   Rcpp::List output = ctx.to_list();
+
+  decorate_output_parameter_names(
+    output,
+    predictor_names,
+    unpenalized_names
+  );
 
   output.attr("class") =
     Rcpp::CharacterVector::create(

@@ -23,15 +23,17 @@
 \item{type}{Plot type: coefficient paths, criterion paths, or ground-truth
 metrics.}
 
-\item{ground.truth}{Required for \code{type = "metrics"}.}
+\item{ground.truth}{Ground-truth selection vector. When supplied and \code{type}
+is omitted, the metric-path plot is selected automatically.}
 
 \item{zero.tol, zero.division, prior.selected, prior.weight.vec, prior.cutoff, prior.direction}{Arguments used to construct an \code{\link[=ecountgmifs.metrics]{ecountgmifs.metrics()}} object.}
 
 \item{...}{Arguments passed to the corresponding plotting helper.}
 }
 \value{
-The input fit invisibly, except for \code{type = "metrics"}, which returns
-the generated \code{ecountgmifs.metrics} object invisibly.
+The input fit invisibly, except for a metric-path plot, which plots
+and returns the generated \code{ecountgmifs.metrics} object invisibly. Therefore
+\code{metrics <- plot(fit, ground.truth = truth)} both plots and captures it.
 }
 \description{
 Plot an ecountgmifs fit
