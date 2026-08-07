@@ -338,10 +338,192 @@
   )
 }
 
+#' @rdname information.criteria
+#' @export
+criterion <- function(
+    name = "AIC",
+    type = "nnz",
+    implementation = "builtin",
+    ...
+) {
+  if (!is.character(name) || length(name) != 1L || is.na(name)) {
+    stop("`name` must be one character value.", call. = FALSE)
+  }
+  if (!is.character(type) || length(type) != 1L || is.na(type)) {
+    stop("`type` must be one character value.", call. = FALSE)
+  }
+  if (
+      !is.character(implementation) ||
+      length(implementation) != 1L ||
+      is.na(implementation)
+  ) {
+    stop("`implementation` must be one character value.", call. = FALSE)
+  }
+
+  name <- match.arg(
+    toupper(name),
+    names(.information.penalty.code)
+  )
+  type <- match.arg(
+    tolower(type),
+    names(.information.df.code)
+  )
+  implementation <- tolower(implementation)
+  if (identical(implementation, "environment")) {
+    implementation <- "r.environment"
+  }
+  if (identical(implementation, "closure")) {
+    implementation <- "r.closure"
+  }
+  implementation <- match.arg(
+    implementation,
+    c("builtin", "live", "r.environment", "r.closure")
+  )
+
+  dots <- list(...)
+  dot_names <- names(dots)
+
+  if (length(dots) > 0L) {
+    if (is.null(dot_names) || anyNA(dot_names) || any(!nzchar(dot_names))) {
+      stop("Every argument in `...` must be named.", call. = FALSE)
+    }
+    if (anyDuplicated(dot_names)) {
+      duplicated_names <- unique(dot_names[duplicated(dot_names)])
+      stop(
+        "Duplicated argument(s) in `...`: ",
+        paste(duplicated_names, collapse = ", "),
+        call. = FALSE
+      )
+    }
+  }
+
+  allowed_dots <- character()
+  if (identical(name, "EBIC")) {
+    allowed_dots <- c(allowed_dots, "gamma")
+  }
+  if (identical(implementation, "live")) {
+    allowed_dots <- c(allowed_dots, "cache")
+  }
+
+  unknown_dots <- setdiff(dot_names, allowed_dots)
+  if (length(unknown_dots) > 0L) {
+    if ("gamma" %in% unknown_dots && !identical(name, "EBIC")) {
+      stop("`gamma` is only available for EBIC.", call. = FALSE)
+    }
+    if ("cache" %in% unknown_dots && !identical(implementation, "live")) {
+      stop(
+        "`cache` is only available for `implementation = \"live\"`.",
+        call. = FALSE
+      )
+    }
+    stop(
+      "Unused argument(s) in `...`: ",
+      paste(unknown_dots, collapse = ", "),
+      call. = FALSE
+    )
+  }
+
+  gamma <- if (identical(name, "EBIC")) {
+    if ("gamma" %in% dot_names) dots[["gamma"]] else 0.5
+  } else {
+    0.5
+  }
+
+  cache <- if (identical(implementation, "live")) {
+    value <- if ("cache" %in% dot_names) dots[["cache"]] else TRUE
+    if (!is.logical(value) || length(value) != 1L || is.na(value)) {
+      stop("`cache` must be TRUE or FALSE.", call. = FALSE)
+    }
+    value
+  } else {
+    TRUE
+  }
+
+  settings <- .validate.information.arguments(
+    penalty = name,
+    definition = type,
+    gamma = gamma
+  )
+
+  if (identical(implementation, "builtin")) {
+    if (identical(settings$penalty, "EBIC")) {
+      return(
+        .information.builtin(
+          settings$penalty,
+          settings$definition,
+          gamma = settings$gamma
+        )
+      )
+    }
+
+    return(
+      .information.builtin(
+        settings$penalty,
+        settings$definition
+      )
+    )
+  }
+
+  if (identical(implementation, "live")) {
+    if (identical(settings$penalty, "EBIC")) {
+      return(
+        .information.live(
+          settings$penalty,
+          settings$definition,
+          gamma = settings$gamma,
+          cache = cache
+        )
+      )
+    }
+
+    return(
+      .information.live(
+        settings$penalty,
+        settings$definition,
+        cache = cache
+      )
+    )
+  }
+
+  if (identical(implementation, "r.environment")) {
+    if (identical(settings$penalty, "EBIC")) {
+      return(
+        .information.r.environment(
+          settings$penalty,
+          settings$definition,
+          gamma = settings$gamma
+        )
+      )
+    }
+
+    return(
+      .information.r.environment(
+        settings$penalty,
+        settings$definition
+      )
+    )
+  }
+
+  if (identical(settings$penalty, "EBIC")) {
+    return(
+      .information.r.closure(
+        settings$penalty,
+        settings$definition,
+        gamma = settings$gamma
+      )
+    )
+  }
+
+  .information.r.closure(
+    settings$penalty,
+    settings$definition
+  )
+}
+
 #' Information criteria in four implementation variants
 #'
 #' @name information.criteria
-#' @aliases information-criteria AIC_nnz BIC_nnz SABIC_nnz AIC_hedf BIC_hedf SABIC_hedf
+#' @aliases information-criteria criterion AIC_nnz BIC_nnz SABIC_nnz AIC_hedf BIC_hedf SABIC_hedf
 #'
 #' @description
 #' Every criterion on this page is available as package-built C++,
@@ -367,8 +549,17 @@
 #' * nnz: `NNZ`;
 #' * hedf: `NNZ * n / p`.
 #'
-#' Full-count constructors are provided for AIC, BIC, SABIC, and EBIC. NNZ and
-#' HEDF constructors are provided for AIC, BIC, and SABIC.
+#' The compact [criterion()] constructor supports every criterion with every
+#' degrees-of-freedom definition. The historical long-form constructors retain
+#' their existing set: full-count constructors for AIC, BIC, SABIC, and EBIC,
+#' and NNZ/HEDF constructors for AIC, BIC, and SABIC.
+#'
+#' @section Compact constructor:
+#' Prefer `criterion("AIC", type = "nnz")` for normal user code. Set
+#' `implementation = "live"`, `"r.environment"`, or `"r.closure"` only when
+#' that implementation is specifically needed. The default is package-built
+#' C++. A bare `AIC()` or `BIC()` alias is intentionally avoided because it
+#' would mask the established R generics.
 #'
 #' @section Formulas:
 #' With negative log-likelihood `L` and selected complexity `df`,
@@ -384,18 +575,26 @@
 #' They therefore retain the historical live-compilation behavior rather than
 #' using R callback adapters.
 #'
-#' @param cache Reuse an identical live-compiled criterion in the current R
-#'   session.
-#' @param gamma Finite non-negative EBIC hyperparameter.
+#' @param name Criterion penalty: `"AIC"`, `"BIC"`, `"SABIC"`, or `"EBIC"`.
+#' @param type Degrees-of-freedom definition: `"nnz"`, `"full"`, or `"hedf"`.
+#' @param implementation Plugin implementation used by [criterion()].
+#' @param ... Criterion-specific options. `gamma` is accepted only for EBIC.
+#'   `cache` is accepted only for `implementation = "live"`.
 #'
 #' @return An external pointer to an `IEcountgmifsCriterion` child.
 #'
 #' @examples
 #' criteria <- list(
-#'   AIC = plugin.criterion.AIC.builtin(),
-#'   BIC.nnz = plugin.criterion.BIC.nnz.live(),
-#'   SABIC.hedf.environment = plugin.criterion.SABIC.hedf.r.environment(),
-#'   EBIC.closure = plugin.criterion.EBIC.r.closure(gamma = 0.5)
+#'   AIC.nnz = criterion("AIC", type = "nnz"),
+#'   BIC.full = criterion("BIC", type = "full"),
+#'   SABIC.hedf = criterion("SABIC", type = "hedf"),
+#'   EBIC.nnz = criterion("EBIC", type = "nnz", gamma = 0.5)
+#' )
+#'
+#' live.aic <- criterion(
+#'   "AIC",
+#'   type = "nnz",
+#'   implementation = "live"
 #' )
 #'
 #' \dontrun{

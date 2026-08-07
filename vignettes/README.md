@@ -392,54 +392,22 @@ bic_parameters$link
 Individual groups can be extracted directly with the same selectors:
 
 ```r
-beta_at_bic <- bparams(
+theta_path <- theta(fit_modular)
+
+family_at_bic <- family.parameters(
   fit_modular,
   criterion = "BIC.nnz.builtin"
 )
 
-theta_at_terminal <- thparams(
-  fit_modular,
-  state = "terminal"
-)
-
-family_at_bic <- fparams(
-  fit_modular,
-  criterion = "BIC.nnz.builtin"
-)
-
-link_at_terminal <- lparams(
+link_at_terminal <- link.parameters(
   fit_modular,
   state = "terminal"
 )
 ```
 
-The preferred compact aliases are `bparams()`, `thparams()`, `fparams()`, and
-`lparams()`. Descriptive aliases are also exported:
-
-```r
-beta.parameters(fit_modular)
-beta.params(fit_modular)
-pen.parameters(fit_modular)
-pen.params(fit_modular)
-penparams(fit_modular)
-
-theta.parameters(fit_modular)
-theta.params(fit_modular)
-thetaparams(fit_modular)
-nonpen.parameters(fit_modular)
-nonpen.params(fit_modular)
-nonpenparams(fit_modular)
-npparams(fit_modular)
-
-family.parameters(fit_modular)
-family.params(fit_modular)
-
-link.parameters(fit_modular)
-link.params(fit_modular)
-```
-
-Parameter-free families or links return zero-length vectors for one state and
-zero-column matrices for paths.
+`family.params()` and `link.params()` are shorter aliases for the last two
+functions. Parameter-free families or links return zero-length vectors for one
+state and zero-column matrices for paths.
 
 The same alpha and eta selectors work for multi-alpha and tuning-grid objects:
 
@@ -456,38 +424,6 @@ grid_parameters <- params(
   eta = 10,
   criterion = "BIC.builtin"
 )
-```
-
-## Inspecting the fitted model modules
-
-Use `family()`, `link()`, and `criteria()` to inspect the modules that were
-actually used for fitting. These accessors report names, parameter counts, the
-original call specification, the constructor name, and the constructor function
-when it can still be resolved.
-
-```r
-family_info <- family(fit_modular)
-family_info$name
-family_info$parameter_count
-family_info$function_name
-family_info$constructor
-
-link_info <- link(fit_modular)
-link_info$name
-link_info$call
-
-criterion_info <- criteria(fit_modular)
-names(criterion_info$criteria)
-criterion_info$criteria[[1L]]$function_name
-criterion_info$selected
-```
-
-Multi-alpha and tuning-grid objects accept the same `alpha` and `eta` selectors:
-
-```r
-family(fit_multi, alpha = 0.75)
-link(fit_grid, alpha = 0.75, eta = 10)
-criteria(fit_grid, alpha = 0.75, eta = 10)
 ```
 
 ## Model-selection criteria

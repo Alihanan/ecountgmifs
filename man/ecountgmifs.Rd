@@ -35,9 +35,12 @@ ecountgmifs(
 
 \item{offset}{Numeric offset vector or \code{NULL}.}
 
-\item{weight.vec}{Positive elastic-net prior weights or \code{NULL}.}
+\item{weight.vec}{Positive elastic-net prior weights, an object returned by
+\code{\link[=ecountgmifs.weight.prior]{ecountgmifs.weight.prior()}}, or \code{NULL}.}
 
-\item{enet.alpha}{Elastic-net mixing parameter in \verb{[0, 1]}.}
+\item{enet.alpha}{One or more elastic-net mixing parameters in \verb{[0, 1]}.
+A vector fits one complete path per alpha and returns an
+\code{ecountgmifs_multi_alpha} object.}
 
 \item{family}{Either \code{"negative.binomial"}, \code{"poisson"}, a family external
 pointer, a zero-argument constructor returning one, or its character name.}
@@ -67,7 +70,10 @@ constructor, or its character name. When supplied, it takes precedence over
 \code{family} and \code{link}.}
 }
 \value{
-An object of class \code{"ecountgmifs"}.
+An object of class \code{"ecountgmifs"} for one fit,
+\code{"ecountgmifs_multi_alpha"} for multiple alpha values with a fixed
+numeric weight vector, or \code{"ecountgmifs_tuning_grid"} when a prior-weight
+specification supplies one or more prior-strength values.
 }
 \description{
 Fits an extended generalized monotone incremental forward-stagewise model

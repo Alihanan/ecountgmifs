@@ -19,8 +19,8 @@
   criterion.label.cex = NULL,
   criterion.label.offset = 0.35,
   label.criteria = TRUE,
-  legend.position = c("right", "none"),
-  legend.cex = 0.8,
+  legend.position = "outside",
+  legend.cex = 1,
   criterion.legend.point.cex = 1,
   legend.margin = 9,
   xlab = NULL,
@@ -65,13 +65,17 @@ labels use the same size as the axis tick text.}
 
 \item{label.criteria}{Label criterion selections on the upper plot axis.}
 
-\item{legend.position}{Whether to place legends outside the right side or
-suppress them.}
+\item{legend.position}{Whether to place the legend in a dedicated right-side
+panel, inside the plot, or suppress it.}
 
-\item{legend.cex, legend.margin}{Outside-legend size and reserved margin.}
+\item{legend.cex}{Target legend-text size. Long labels are wrapped and the
+size is reduced only when required to fit the dedicated panel.}
 
 \item{criterion.legend.point.cex}{Criterion symbol size in the outside
 criterion legend.}
+
+\item{legend.margin}{Relative width control for the dedicated outside legend
+panel. Larger values reserve more horizontal space.}
 
 \item{xlab, ylab, main}{Axis and title labels.}
 

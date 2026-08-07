@@ -10,6 +10,7 @@
     "#include <cmath>",
     "#include <limits>",
     "#include <stdexcept>",
+    "#include <string>",
     "",
     "class LiveNB2LogFamilyLink final : public IEcountgmifsFamilyLink",
     "{",

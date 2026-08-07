@@ -51,8 +51,11 @@
 #' @param w Numeric unpenalized predictor matrix or `NULL`.
 #' @param intercept Logical. Add an intercept column to `w`.
 #' @param offset Numeric offset vector or `NULL`.
-#' @param weight.vec Positive elastic-net prior weights or `NULL`.
-#' @param enet.alpha Elastic-net mixing parameter in `[0, 1]`.
+#' @param weight.vec Positive elastic-net prior weights, an object returned by
+#'   [ecountgmifs.weight.prior()], or `NULL`.
+#' @param enet.alpha One or more elastic-net mixing parameters in `[0, 1]`.
+#'   A vector fits one complete path per alpha and returns an
+#'   `ecountgmifs_multi_alpha` object.
 #' @param family Either `"negative.binomial"`, `"poisson"`, a family external
 #'   pointer, a zero-argument constructor returning one, or its character name.
 #' @param savefolder Retained for compatibility; currently unused.
@@ -71,7 +74,10 @@
 #'   constructor, or its character name. When supplied, it takes precedence over
 #'   `family` and `link`.
 #'
-#' @return An object of class `"ecountgmifs"`.
+#' @return An object of class `"ecountgmifs"` for one fit,
+#'   `"ecountgmifs_multi_alpha"` for multiple alpha values with a fixed
+#'   numeric weight vector, or `"ecountgmifs_tuning_grid"` when a prior-weight
+#'   specification supplies one or more prior-strength values.
 #' @export
 ecountgmifs <- function(
     X,
@@ -92,6 +98,29 @@ ecountgmifs <- function(
     control = ecountgmifs.control(),
     family.link = NULL
 ) {
+  fit_call <- match.call()
+
+  if (
+      !is.numeric(enet.alpha) ||
+      length(enet.alpha) == 0L ||
+      anyNA(enet.alpha) ||
+      any(!is.finite(enet.alpha)) ||
+      any(enet.alpha < 0) ||
+      any(enet.alpha > 1)
+  ) {
+    stop("value of 'enet.alpha' must contain finite values in [0, 1]", call. = FALSE)
+  }
+
+  enet.alpha <- as.numeric(enet.alpha)
+
+  if (anyDuplicated(enet.alpha)) {
+    warning(
+      "duplicated values in 'enet.alpha' were removed",
+      call. = FALSE
+    )
+    enet.alpha <- unique(enet.alpha)
+  }
+
   X <- as.matrix(X)
   y <- as.numeric(y)
 
@@ -113,17 +142,6 @@ ecountgmifs <- function(
 
   if (!is.logical(intercept) || length(intercept) != 1L || is.na(intercept)) {
     stop("value of 'intercept' must be TRUE or FALSE", call. = FALSE)
-  }
-
-  if (
-    !is.numeric(enet.alpha) ||
-    length(enet.alpha) != 1L ||
-    is.na(enet.alpha) ||
-    !is.finite(enet.alpha) ||
-    enet.alpha < 0 ||
-    enet.alpha > 1
-  ) {
-    stop("value of 'enet.alpha' must be in [0, 1]", call. = FALSE)
   }
 
   if (is.null(w)) {
@@ -165,10 +183,47 @@ ecountgmifs <- function(
     }
   }
 
-  if (is.null(weight.vec)) {
-    weight.vec <- rep(1, ncol(X))
+  predictor_names <- if (is.null(colnames(X))) {
+    paste0("X", seq_len(ncol(X)))
   } else {
+    make.unique(as.character(colnames(X)))
+  }
+  colnames(X) <- predictor_names
+
+  weight_prior <- NULL
+
+  if (inherits(weight.vec, "ecountgmifs_weight_prior")) {
+    weight_prior <- .ecountgmifs.prepare.weight.prior(
+      object = weight.vec,
+      predictor_names = predictor_names,
+      predictor_count = ncol(X)
+    )
+  } else if (is.null(weight.vec)) {
+    weight.vec <- rep(1, ncol(X))
+    names(weight.vec) <- predictor_names
+  } else {
+    original_weight_names <- names(weight.vec)
     weight.vec <- as.numeric(weight.vec)
+
+    if (!is.null(original_weight_names)) {
+      names(weight.vec) <- original_weight_names
+
+      missing_weight <- setdiff(
+        predictor_names,
+        names(weight.vec)
+      )
+
+      if (length(missing_weight) > 0L) {
+        stop(
+          "Named `weight.vec` is missing predictors: ",
+          paste(utils::head(missing_weight, 20L), collapse = ", "),
+          if (length(missing_weight) > 20L) " ..." else "",
+          call. = FALSE
+        )
+      }
+
+      weight.vec <- weight.vec[predictor_names]
+    }
 
     if (
       length(weight.vec) != ncol(X) ||
@@ -180,8 +235,40 @@ ecountgmifs <- function(
     }
   }
 
+  if (
+      !is.null(weight_prior) &&
+      (
+        length(weight_prior$eta) > 1L ||
+        length(enet.alpha) > 1L
+      )
+  ) {
+    return(
+      .ecountgmifs.fit.tuning.grid(
+        fit_call = fit_call,
+        alpha = enet.alpha,
+        weight_prior = weight_prior,
+        envir = parent.frame()
+      )
+    )
+  }
+
+  if (!is.null(weight_prior)) {
+    weight.vec <- weight_prior$weights[[1L]]
+  }
+
+  if (length(enet.alpha) > 1L) {
+    return(
+      .ecountgmifs.fit.multi.alpha(
+        fit_call = fit_call,
+        alpha = enet.alpha,
+        envir = parent.frame()
+      )
+    )
+  }
+
   weight.vec <-
     weight.vec * ncol(X) / sum(weight.vec)
+  names(weight.vec) <- predictor_names
 
   builtin.family <- NULL
   builtin.link <- NULL
@@ -404,17 +491,11 @@ ecountgmifs <- function(
     family_link = family.link.pointer
   )
 
-  out$call <- match.call()
+  out$call <- fit_call
 
   # Lightweight plotting and printing metadata are retained even when
   # `include.data = FALSE`. The prior-weight vector is needed for the optional
   # ground-truth baseline and is only length p.
-  predictor_names <- if (is.null(colnames(X))) {
-    paste0("X", seq_len(ncol(X)))
-  } else {
-    make.unique(as.character(colnames(X)))
-  }
-
   unpenalized_names <- if (is.null(colnames(w))) {
     paste0("theta", seq_len(ncol(w)))
   } else {
@@ -423,6 +504,19 @@ ecountgmifs <- function(
 
   out$input$weight_vec <- weight.vec
 
+  if (!is.null(weight_prior)) {
+    out$input$prior_eta <- weight_prior$eta[[1L]]
+    out$input$prior_eta_label <- weight_prior$eta_labels[[1L]]
+    out$input$prior_selected <- weight_prior$score > 0
+    names(out$input$prior_selected) <- predictor_names
+    out$weight_prior <- list(
+      label = weight_prior$label,
+      eta = weight_prior$eta[[1L]],
+      eta_label = weight_prior$eta_labels[[1L]],
+      score = weight_prior$score
+    )
+  }
+
   out <- .ecountgmifs.assign.parameter.names(
     object = out,
     predictor.names = predictor_names,
@@ -430,6 +524,21 @@ ecountgmifs <- function(
   )
 
   out$input$response_name <- deparse(substitute(y))
+
+  # Retain compact data summaries needed by diagnostic plots even when the
+  # complete design matrices are intentionally omitted from the returned fit.
+  out$diagnostics <- list(
+    response = y,
+    response_name = out$input$response_name,
+    response_mean = mean(y),
+    response_variance = stats::var(y),
+    predictor_mean = colMeans(X),
+    predictor_variance = apply(X, 2L, stats::var),
+    predictor_nonnegative = apply(X, 2L, function(value) all(value >= 0))
+  )
+  names(out$diagnostics$predictor_mean) <- predictor_names
+  names(out$diagnostics$predictor_variance) <- predictor_names
+  names(out$diagnostics$predictor_nonnegative) <- predictor_names
 
   class(out) <- c("ecountgmifs", class(out))
   out

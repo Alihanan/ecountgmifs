@@ -183,7 +183,7 @@ as.ecountgmifs <- function(
     selection.label.cex = NULL,
     selection.label.offset = 0.35,
     criterion.legend = c("right", "none"),
-    criterion.legend.cex = 0.8,
+    criterion.legend.cex = 1.0,
     criterion.legend.point.cex = 1.0,
     criterion.legend.margin = 7,
     label = FALSE,
@@ -202,6 +202,10 @@ as.ecountgmifs <- function(
   xvar <- match.arg(xvar)
   selection.points <- match.arg(selection.points)
   criterion.legend <- match.arg(criterion.legend)
+  criterion.legend.cex <- as.numeric(criterion.legend.cex[[1L]])
+  if (!is.finite(criterion.legend.cex) || criterion.legend.cex <= 0) {
+    criterion.legend.cex <- 1.0
+  }
 
   beta_all <- .ecountgmifs.beta.matrix(object)
   x <- .ecountgmifs.path.x(object, xvar)
@@ -294,17 +298,31 @@ as.ecountgmifs <- function(
     character()
   }
 
-  old_mar <- graphics::par("mar")
-  if (
-      identical(criterion.legend, "right") &&
-      length(criterion_names) > 0L
-  ) {
-    graphics::par(
-      mar = old_mar + c(0, 0, 0, criterion.legend.margin)
+  outside_legend <-
+    identical(criterion.legend, "right") &&
+    length(criterion_names) > 0L
+
+  if (outside_legend) {
+    old_par <- graphics::par(no.readonly = TRUE)
+    legend_width <- max(
+      1.45,
+      min(2.8, as.numeric(criterion.legend.margin[[1L]]) * 0.22)
     )
+
     on.exit(
-      graphics::par(mar = old_mar),
+      {
+        graphics::layout(matrix(1L))
+        graphics::par(old_par)
+      },
       add = TRUE
+    )
+
+    graphics::layout(
+      matrix(c(1L, 2L), nrow = 1L),
+      widths = c(4.6, legend_width)
+    )
+    graphics::par(
+      mar = c(5.1, 5.1, 4.1, 1.0) + 0.1
     )
   }
 
@@ -408,8 +426,8 @@ as.ecountgmifs <- function(
       }
     }
 
-    # Use segments rather than abline so selection lines are always clipped
-    # exactly to the plotting box, even when legends or labels use xpd = NA.
+    # Use segments rather than abline so selection lines stay clipped to the
+    # plotting box even when labels are allowed into the figure margin.
     for (i in seq_along(criterion_names)) {
       criterion_name <- criterion_names[[i]]
       selected <- object$path$best_criteria[[criterion_name]]$state
@@ -466,28 +484,6 @@ as.ecountgmifs <- function(
       }
     }
 
-    if (identical(criterion.legend, "right")) {
-      usr <- graphics::par("usr")
-      legend_x <- usr[[2L]] + 0.035 * diff(usr[1:2])
-
-      graphics::legend(
-        x = legend_x,
-        y = usr[[4L]],
-        xjust = 0,
-        yjust = 1,
-        legend = criterion_names,
-        col = styles$col,
-        pch = styles$pch,
-        pt.bg = selection_point_col,
-        pt.cex = criterion.legend.point.cex,
-        lty = 3L,
-        lwd = selection.lwd,
-        title = "Criterion selections",
-        bty = "n",
-        cex = criterion.legend.cex,
-        xpd = NA
-      )
-    }
   }
 
   if (isTRUE(label) && ncol(beta) > 0L) {
@@ -505,7 +501,27 @@ as.ecountgmifs <- function(
       pos = 4L,
       cex = label.cex,
       col = col[selected],
-      xpd = NA
+      xpd = TRUE
+    )
+  }
+
+  if (outside_legend) {
+    graphics::par(
+      mar = c(0.5, 0.2, 0.5, 0.2) + 0.1
+    )
+    .ecountgmifs.legend.panel(
+      legend = criterion_names,
+      col = styles$col,
+      pch = styles$pch,
+      pt.bg = selection_point_col,
+      pt.cex = criterion.legend.point.cex,
+      lty = 3L,
+      lwd = selection.lwd,
+      title = "Criterion selections",
+      bty = "n",
+      cex = criterion.legend.cex,
+      cex.min = min(criterion.legend.cex, 0.92),
+      max.columns = 2L
     )
   }
 
@@ -529,9 +545,12 @@ as.ecountgmifs <- function(
     lty = 1,
     lwd = 1.5,
     col = NULL,
+    legend.position = "outside",
+    legend.margin = 7,
     ...
 ) {
   xvar <- match.arg(xvar)
+  legend.position <- .ecountgmifs.legend.position(legend.position)
   values <- .ecountgmifs.criteria.path(object)
 
   if (ncol(values) == 0L) {
@@ -651,6 +670,32 @@ as.ecountgmifs <- function(
     ylim <- range(c(plotted_values, best_y), finite = TRUE)
   }
 
+  outside_legend <- identical(legend.position, "outside")
+
+  if (outside_legend) {
+    old_par <- graphics::par(no.readonly = TRUE)
+    legend_width <- max(
+      1.45,
+      min(2.8, as.numeric(legend.margin[[1L]]) * 0.22)
+    )
+
+    on.exit(
+      {
+        graphics::layout(matrix(1L))
+        graphics::par(old_par)
+      },
+      add = TRUE
+    )
+
+    graphics::layout(
+      matrix(c(1L, 2L), nrow = 1L),
+      widths = c(4.6, legend_width)
+    )
+    graphics::par(
+      mar = c(5.1, 5.1, 4.1, 1.0) + 0.1
+    )
+  }
+
   graphics::matplot(
     x,
     plotted_values,
@@ -699,23 +744,43 @@ as.ecountgmifs <- function(
         pos = if (selected_y > mean(y_range)) 1L else 3L,
         cex = 0.7,
         col = styles$col[[i]],
-        xpd = NA
+        xpd = TRUE
       )
     }
   }
 
-  graphics::legend(
-    "topright",
-    legend = criterion_names,
-    col = styles$col,
-    lty = lty,
-    lwd = lwd,
-    pch = styles$pch,
-    pt.bg = "white",
-    pt.cex = selection.cex,
-    bty = "n",
-    cex = 0.8
-  )
+  if (outside_legend) {
+    graphics::par(
+      mar = c(0.5, 0.2, 0.5, 0.2) + 0.1
+    )
+    .ecountgmifs.legend.panel(
+      legend = criterion_names,
+      col = styles$col,
+      lty = lty,
+      lwd = lwd,
+      pch = styles$pch,
+      pt.bg = "white",
+      pt.cex = selection.cex,
+      title = "Criteria",
+      bty = "n",
+      cex = 1.05,
+      cex.min = 0.92,
+      max.columns = 2L
+    )
+  } else {
+    .ecountgmifs.draw.legend(
+      legend.position,
+      legend = criterion_names,
+      col = styles$col,
+      lty = lty,
+      lwd = lwd,
+      pch = styles$pch,
+      pt.bg = "white",
+      pt.cex = selection.cex,
+      bty = "n",
+      cex = 1.0
+    )
+  }
 
   invisible(object)
 }
@@ -1065,6 +1130,12 @@ ecountgmifs.metrics <- function(
       predictor_names,
       "prior.selected"
     )
+  } else if (!is.null(object$input$prior_selected)) {
+    resolved_prior <- .ecountgmifs.align.binary.vector(
+      object$input$prior_selected,
+      predictor_names,
+      "stored prior selection"
+    )
   } else {
     if (
         is.null(prior.weight.vec) &&
@@ -1104,6 +1175,8 @@ ecountgmifs.metrics <- function(
 
     prior_metrics$definition <- if (!is.null(prior.selected)) {
       "explicit prior.selected"
+    } else if (!is.null(object$input$prior_selected)) {
+      "stored prior specification"
     } else {
       paste0(
         "weight_vec ",
@@ -1309,9 +1382,12 @@ print.summary.ecountgmifs.metrics <- function(
 #'   distance above the upper plot border. When `criterion.label.cex = NULL`,
 #'   labels use the same size as the axis tick text.
 #' @param label.criteria Label criterion selections on the upper plot axis.
-#' @param legend.position Whether to place legends outside the right side or
-#'   suppress them.
-#' @param legend.cex,legend.margin Outside-legend size and reserved margin.
+#' @param legend.position Whether to place the legend in a dedicated right-side
+#'   panel, inside the plot, or suppress it.
+#' @param legend.cex Target legend-text size. Long labels are wrapped and the
+#'   size is reduced only when required to fit the dedicated panel.
+#' @param legend.margin Relative width control for the dedicated outside legend
+#'   panel. Larger values reserve more horizontal space.
 #' @param xlab,ylab,main Axis and title labels.
 #' @param xlim,ylim Axis limits.
 #' @param lty,lwd,line.alpha,col Path-line styling.
@@ -1335,8 +1411,8 @@ plot.ecountgmifs.metrics <- function(
     criterion.label.cex = NULL,
     criterion.label.offset = 0.35,
     label.criteria = TRUE,
-    legend.position = c("right", "none"),
-    legend.cex = 0.8,
+    legend.position = "outside",
+    legend.cex = 1.0,
     criterion.legend.point.cex = 1.0,
     legend.margin = 9,
     xlab = NULL,
@@ -1354,7 +1430,11 @@ plot.ecountgmifs.metrics <- function(
     ...
 ) {
   xvar <- match.arg(xvar)
-  legend.position <- match.arg(legend.position)
+  legend.position <- .ecountgmifs.legend.position(legend.position)
+  legend.cex <- as.numeric(legend.cex[[1L]])
+  if (!is.finite(legend.cex) || legend.cex <= 0) {
+    legend.cex <- 1.0
+  }
 
   available_metrics <- c(
     "F1",
@@ -1466,14 +1546,29 @@ plot.ecountgmifs.metrics <- function(
     path[, metrics, drop = FALSE]
   )
 
-  old_mar <- graphics::par("mar")
-  if (identical(legend.position, "right")) {
-    graphics::par(
-      mar = old_mar + c(0, 0, 0, legend.margin)
+  outside_legend <- identical(legend.position, "outside")
+
+  if (outside_legend) {
+    old_par <- graphics::par(no.readonly = TRUE)
+    legend_width <- max(
+      1.65,
+      min(3.0, as.numeric(legend.margin[[1L]]) * 0.22)
     )
+
     on.exit(
-      graphics::par(mar = old_mar),
+      {
+        graphics::layout(matrix(1L))
+        graphics::par(old_par)
+      },
       add = TRUE
+    )
+
+    graphics::layout(
+      matrix(c(1L, 2L), nrow = 1L),
+      widths = c(4.6, legend_width)
+    )
+    graphics::par(
+      mar = c(5.1, 5.1, 4.1, 1.0) + 0.1
     )
   }
 
@@ -1651,12 +1746,7 @@ plot.ecountgmifs.metrics <- function(
     }
   }
 
-  if (identical(legend.position, "right")) {
-    usr <- graphics::par("usr")
-    x_span <- diff(usr[1:2])
-    y_span <- diff(usr[3:4])
-    legend_x <- usr[[2L]] + 0.04 * x_span
-
+  if (!identical(legend.position, "none")) {
     metric_labels <- metrics
     metric_colors <- path_col
     metric_lty <- rep(lty, length(metrics))
@@ -1678,48 +1768,73 @@ plot.ecountgmifs.metrics <- function(
       )
     }
 
-    metric_legend <- graphics::legend(
-      x = legend_x,
-      y = usr[[4L]],
-      xjust = 0,
-      yjust = 1,
-      legend = metric_labels,
-      col = metric_colors,
-      lty = metric_lty,
-      lwd = metric_lwd,
-      title = "Metrics",
-      bty = "n",
-      cex = legend.cex,
-      xpd = NA
-    )
+    legend_labels <- metric_labels
+    legend_col <- metric_colors
+    legend_lty <- metric_lty
+    legend_lwd <- metric_lwd
+    legend_pch <- rep(NA_integer_, length(metric_labels))
+    legend_bg <- rep(NA_character_, length(metric_labels))
+    legend_title <- "Metrics"
 
     if (length(criterion_names) > 0L) {
-      criterion_legend_y <- usr[[4L]] -
-        metric_legend$rect$h -
-        0.06 * y_span
-
       criterion_legend_fill <- .ecountgmifs.alpha.colors(
         criterion_styles$col,
         0.9,
         "criterion legend point alpha"
       )
 
-      graphics::legend(
-        x = legend_x,
-        y = criterion_legend_y,
-        xjust = 0,
-        yjust = 1,
-        legend = criterion_names,
-        col = criterion_styles$col,
-        pch = criterion_styles$pch,
-        pt.bg = criterion_legend_fill,
+      legend_labels <- c(legend_labels, criterion_names)
+      legend_col <- c(legend_col, criterion_styles$col)
+      legend_lty <- c(
+        legend_lty,
+        rep(3L, length(criterion_names))
+      )
+      legend_lwd <- c(
+        legend_lwd,
+        rep(criterion.lwd, length(criterion_names))
+      )
+      legend_pch <- c(
+        legend_pch,
+        criterion_styles$pch
+      )
+      legend_bg <- c(
+        legend_bg,
+        criterion_legend_fill
+      )
+      legend_title <- "Metrics and criterion selections"
+    }
+
+    if (outside_legend) {
+      graphics::par(
+        mar = c(0.5, 0.2, 0.5, 0.2) + 0.1
+      )
+      .ecountgmifs.legend.panel(
+        legend = legend_labels,
+        col = legend_col,
+        lty = legend_lty,
+        lwd = legend_lwd,
+        pch = legend_pch,
+        pt.bg = legend_bg,
         pt.cex = criterion.legend.point.cex,
-        lty = 3L,
-        lwd = criterion.lwd,
-        title = "Criterion selections",
+        title = legend_title,
         bty = "n",
         cex = legend.cex,
-        xpd = NA
+        cex.min = min(legend.cex, 0.92),
+        max.columns = 2L
+      )
+    } else {
+      graphics::legend(
+        legend.position,
+        legend = legend_labels,
+        col = legend_col,
+        lty = legend_lty,
+        lwd = legend_lwd,
+        pch = legend_pch,
+        pt.bg = legend_bg,
+        pt.cex = criterion.legend.point.cex,
+        title = legend_title,
+        bty = "n",
+        cex = legend.cex
       )
     }
   }

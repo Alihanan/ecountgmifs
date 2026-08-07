@@ -2,28 +2,44 @@
 % Please edit documentation in R/methods.R
 \name{coef.ecountgmifs}
 \alias{coef.ecountgmifs}
-\title{Extract an ecountgmifs coefficient path or selected coefficient vector}
+\title{Extract an ecountgmifs coefficient path or selected coefficients}
 \usage{
-\method{coef}{ecountgmifs}(object, criterion = NULL, iteration = NULL, include.theta = FALSE, ...)
+\method{coef}{ecountgmifs}(
+  object,
+  criterion = NULL,
+  iteration = NULL,
+  include.theta = FALSE,
+  state = NULL,
+  drop = TRUE,
+  ...
+)
 }
 \arguments{
 \item{object}{An \code{ecountgmifs} fit.}
 
-\item{criterion}{Optional criterion name selecting its best stored state.}
+\item{criterion}{Optional criterion name or names selecting their best stored
+states.}
 
-\item{iteration}{Optional iteration; the nearest saved state is used.}
+\item{iteration}{Optional numeric iteration or iterations. The nearest saved
+state is used for each value.}
 
-\item{include.theta}{Logical. Append unpenalized coefficients when a single
-state is selected.}
+\item{include.theta}{Logical. Include unpenalized coefficients in paths and
+selected vectors.}
+
+\item{state}{Optional explicit state selector: \code{"path"} or \code{"terminal"}.
+It cannot be combined with \code{criterion} or \code{iteration}.}
+
+\item{drop}{Logical. Return a named vector instead of a one-row matrix when
+exactly one state is selected.}
 
 \item{...}{Unused.}
 }
 \value{
-A numeric matrix for the full path or a named numeric vector for one
-selected state.
+A numeric matrix for a path or multiple selected states. A single
+selected state is returned as a named numeric vector when \code{drop = TRUE}.
 }
 \description{
-Without \code{criterion} or \code{iteration}, this returns the saved coefficient path
-with saved states in rows and penalized predictors in columns. Supplying one
-selector returns the coefficient vector at the corresponding state.
+With no selector, this returns the saved coefficient path. Use
+\code{state = "terminal"}, one or more criterion names, or one or more iterations
+to extract fitted coefficient vectors from particular states.
 }

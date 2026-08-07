@@ -29,7 +29,9 @@ live.log.source <- paste(c(
   "// [[Rcpp::depends(ecountgmifs)]]",
   "// [[Rcpp::plugins(cpp17)]]",
   "#include <ecountgmifs/api.h>",
+  "#include <cmath>",
   "#include <stdexcept>",
+  "#include <string>",
   "",
   "class UserLogLink final : public IEcountgmifsLinkFunc",
   "{",
@@ -71,7 +73,7 @@ live.log.source <- paste(c(
   "{",
   "  return Rcpp::XPtr<IEcountgmifsLinkFunc>(new UserLogLink(), true);",
   "}"
-), collapse = "\\\\n")
+), collapse = "\n")
 
 user.link <- compile.link(
   code = live.log.source,

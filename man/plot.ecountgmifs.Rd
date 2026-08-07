@@ -6,8 +6,10 @@
 \usage{
 \method{plot}{ecountgmifs}(
   x,
-  type = c("coefficients", "criteria", "metrics"),
+  type = c("coefficients", "criteria", "metrics", "diagnostics", "overdispersion"),
   ground.truth = NULL,
+  criterion = NULL,
+  iteration = NULL,
   zero.tol = sqrt(.Machine$double.eps),
   zero.division = c("zero", "one", "NA"),
   prior.selected = NULL,
@@ -20,11 +22,13 @@
 \arguments{
 \item{x}{An \code{ecountgmifs} fit.}
 
-\item{type}{Plot type: coefficient paths, criterion paths, or ground-truth
-metrics.}
+\item{type}{Plot type: coefficient paths, criterion paths, ground-truth
+metrics, or fitted-model diagnostics.}
 
 \item{ground.truth}{Ground-truth selection vector. When supplied and \code{type}
 is omitted, the metric-path plot is selected automatically.}
+
+\item{criterion, iteration}{Optional state selector used by diagnostic plots.}
 
 \item{zero.tol, zero.division, prior.selected, prior.weight.vec, prior.cutoff, prior.direction}{Arguments used to construct an \code{\link[=ecountgmifs.metrics]{ecountgmifs.metrics()}} object.}
 
