@@ -9,7 +9,9 @@ The package is designed for sparse regression problems where the response is cou
 Install the package from GitHub:
 
 ```r
-# install.packages("remotes")
+if (!requireNamespace("remotes", quietly = TRUE)) {
+  install.packages("remotes")
+}
 remotes::install_github("Alihanan/ecountgmifs")
 ```
 
