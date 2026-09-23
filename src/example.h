@@ -369,8 +369,14 @@ public:
   {
     (void) control;
 
-    log_factorial_ =
-      arma::lgamma(input.y + 1.0);
+    prepare_response(input.y);
+  }
+
+  // Standalone objective evaluation needs the same response cache as fitting,
+  // without constructing an unrelated regression design and control object.
+  void prepare_response(const arma::vec& y) const
+  {
+    log_factorial_ = arma::lgamma(y + 1.0);
   }
 
   void negloglik(

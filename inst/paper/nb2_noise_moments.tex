@@ -1,0 +1,150 @@
+% Standalone appendix. For a journal manuscript, copy the section body and
+% bibliography entries into the manuscript's own document/bibliography.
+\documentclass[11pt]{article}
+\usepackage[a4paper,margin=25mm]{geometry}
+\usepackage{amsmath,amssymb}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage[hidelinks]{hyperref}
+\newcommand{\E}{\mathbb{E}}
+\newcommand{\Var}{\operatorname{Var}}
+\newcommand{\Prob}{\mathbb{P}}
+\begin{document}
+
+\section{Moments of perturbed NB2 observations}
+\label{sec:nb2-noise-moments}
+
+Let $C$ be a latent negative-binomial count in the NB2 parameterization,
+\begin{equation}
+  \E(C)=\mu,\qquad v=\Var(C)=\mu+\alpha\mu^2,\qquad
+  p_0=\Prob(C=0)=(1+\alpha\mu)^{-1/\alpha}.
+\end{equation}
+Here $\alpha>0$ is overdispersion (\texttt{dispersion} in the code),
+and R's negative-binomial size is $1/\alpha$. At $\alpha=0$, the
+Poisson limit gives $v=\mu$ and $p_0=e^{-\mu}$. Observation noise $\varepsilon$
+is independent of $C$, and every negative noisy response is clamped to zero:
+\begin{equation}
+  Y=\max(0,C+\varepsilon),\qquad m=\E(Y),\qquad V=\Var(Y).
+\end{equation}
+For $m>0$, define the \emph{moment-matched dispersion}
+\begin{equation}
+  \alpha_{\mathrm{mom}}=\frac{V-m}{m^2}.
+  \label{eq:moment-dispersion}
+\end{equation}
+This is a descriptive moment quantity: $Y$ need not be NB, and
+$\alpha_{\mathrm{mom}}$ need not equal the fitted gamma-objective dispersion.
+A negative value means that no NB2 distribution matches both moments.
+Without noise, $(m,V,\alpha_{\mathrm{mom}})=(\mu,v,\alpha)$ for $\mu>0$.
+
+\subsection{Positive uniform noise}
+For $\varepsilon\sim U(0,1)$, clamping has no effect. Independence and the
+uniform moments $\E(\varepsilon)=1/2$ and $\Var(\varepsilon)=1/12$ give
+\begin{align}
+  m&=\mu+\frac12, & V&=v+\frac1{12},\\
+  \alpha_{\mathrm{mom}}
+   &=\frac{\alpha\mu^2-5/12}{(\mu+1/2)^2}.
+\end{align}
+These are standard moment identities. Ouimet~\cite{ouimet2023} studies
+NB counts with this uniform jitter, particularly their median; that paper
+does not validate the gamma extension as a continuous likelihood.
+Also, $\lfloor Y\rfloor=C$ almost surely.
+
+\subsection{Centered uniform noise with zero clamping}
+For $\varepsilon\sim U(-1/2,1/2)$, only latent zeros can be clamped.
+The following special-case calculation is our own application of
+conditioning, rather than a formula attributed to the cited papers.
+At $C=0$, the uniform density is one, so
+\begin{equation}
+  \E(Y\mid C=0)=\int_0^{1/2}u\,du=\frac18,\qquad
+  \E(Y^2\mid C=0)=\int_0^{1/2}u^2\,du=\frac1{24}.
+\end{equation}
+At an integer $k\geq1$, clamping is inactive and the conditional moments
+are $k$ and $k^2+1/12$. Averaging over $C$ therefore yields
+\begin{align}
+  m &= \mu+\frac{p_0}{8},\\
+  \E(Y^2)&=v+\mu^2+\frac1{12}-\frac{p_0}{24},\\
+  V&=v+\frac1{12}-\frac{p_0}{24}
+       -\frac{\mu p_0}{4}-\frac{p_0^2}{64},\\
+  \alpha_{\mathrm{mom}}
+    &=\frac{\alpha\mu^2+1/12-p_0/6-\mu p_0/4-p_0^2/64}
+            {(\mu+p_0/8)^2}.
+\end{align}
+Thus centered noise acquires a positive mean shift after clamping.
+The zero mass is $p_0/2$, and rounding $Y$ recovers $C$ almost surely.
+Ouimet~\cite{ouimet2023} also uses centered uniform jitter, but without
+the zero-clamping operation considered here.
+
+\subsection{Gaussian noise with zero clamping}
+For $\varepsilon\sim N(0,\sigma^2)$, both latent zeros and positive counts
+can cross zero. Let $\phi$ and $\Phi$ denote the standard normal density
+and distribution function. We use the published left-censored normal
+moments of Foi et al.~\cite{foi2008}, Eqs.~(32)--(33), rescaled to
+standard deviation $\sigma$. Writing their variance as a second moment gives
+\begin{align}
+  a_k:=\E(Y\mid C=k)
+     &=k\Phi(k/\sigma)+\sigma\phi(k/\sigma),\\
+  b_k:=\E(Y^2\mid C=k)
+     &=(k^2+\sigma^2)\Phi(k/\sigma)
+          +k\sigma\phi(k/\sigma).
+\end{align}
+These conditional normal formulas are published results and are not
+rederived here. Our application averages them over the NB count
+probabilities $p_k=\Prob(C=k)$:
+\begin{align}
+  m_\sigma &=\sum_{k=0}^{\infty}p_k a_k, &
+  Q_\sigma&=\sum_{k=0}^{\infty}p_k b_k,\\
+  V_\sigma&=Q_\sigma-m_\sigma^2, &
+  \alpha_{\mathrm{mom},\sigma}
+    &=\frac{Q_\sigma-m_\sigma^2-m_\sigma}{m_\sigma^2}.
+  \label{eq:gaussian-mixture}
+\end{align}
+Also, $\Prob(Y=0)=\sum_{k=0}^{\infty}p_k\Phi(-k/\sigma)$.
+Equation~\eqref{eq:gaussian-mixture} applies separately to both proposed arms:
+\begin{equation}
+  \sigma=1/\sqrt{12}\quad\text{and}\quad\sigma=1.
+\end{equation}
+The first matches the \emph{unclamped noise variance} of both uniforms;
+their final response variances are generally different. The second is a
+larger perturbation. The formulas condition on the exact count: no normal
+approximation to the NB distribution is used. Unlike uniform jitter,
+Gaussian rounding does not generally recover $C$.
+
+The implementation adds the clipping corrections to the exact unclipped
+moments $(\mu,v+\mu^2+\sigma^2)$, summing corrections through
+$k=\lceil10\sigma\rceil$. It returns bounds on omitted corrections;
+the theoretical expressions above remain infinite-sum identities.
+
+\subsection{Relation to the fitted objective}
+For $\alpha>0$, the existing C++ NB2 objective uses
+\begin{align}
+  \ell(y;\mu,\alpha)
+   ={}&\log\Gamma(y+\alpha^{-1})-\log\Gamma(\alpha^{-1})
+       -\log\Gamma(y+1)\nonumber\\
+     &+y\log(\alpha\mu)-(y+\alpha^{-1})\log(1+\alpha\mu).
+\end{align}
+This is the NB log probability on integer responses. Evaluating it at real
+$y\geq0$ is a working objective, not by itself a normalized continuous
+density. The software retains its existing mean caps and Poisson fallback
+at $\alpha\leq10^{-8}$. The experiment reports latent $\alpha$, noisy-population
+$\alpha_{\mathrm{mom}}$, and fitted $\widehat\alpha$ separately. Parameter error
+and a common independent integer-count test log score provide comparisons;
+raw objectives evaluated on different response transformations do not.
+
+\begin{thebibliography}{9}
+\bibitem{ouimet2023}
+F. Ouimet (2023).
+A refined continuity correction for the negative binomial distribution and
+asymptotics of the median.
+\emph{Metrika}, 86, 827--849.
+\href{https://doi.org/10.1007/s00184-023-00897-2}
+{doi:10.1007/s00184-023-00897-2}.
+
+\bibitem{foi2008}
+A. Foi, M. Trimeche, V. Katkovnik, and K. Egiazarian (2008).
+Practical Poissonian-Gaussian noise modeling and fitting for single-image
+raw-data.
+\emph{IEEE Transactions on Image Processing}, 17(10), 1737--1754.
+\href{https://doi.org/10.1109/TIP.2008.2001399}
+{doi:10.1109/TIP.2008.2001399}.
+\end{thebibliography}
+\end{document}

@@ -10,6 +10,44 @@
 #include <string>
 #include <unordered_set>
 
+// Standalone access to the very same NB2 objective used by the fitting core.
+// Keep this bridge in the existing translation unit: example.h also defines
+// factory functions and must not be included in a second translation unit.
+// [[Rcpp::export]]
+double nb2_loglik_cpp(
+    const arma::vec& y,
+    const arma::vec& mu,
+    const double dispersion,
+    const double mu_min_cap,
+    const double mu_max_cap,
+    const double poisson_fallback_eps
+)
+{
+  if (y.n_elem == 0 || y.n_elem != mu.n_elem ||
+      !y.is_finite() || !mu.is_finite() ||
+      arma::any(y < 0.0) || arma::any(mu < 0.0)) {
+    Rcpp::stop("y and mu must be non-empty, non-negative finite vectors of equal length");
+  }
+  if (!std::isfinite(dispersion) || dispersion < 0.0) {
+    Rcpp::stop("dispersion must be finite and non-negative");
+  }
+
+  ecountgmifs_examples::NB2Family family(
+    mu_min_cap,
+    mu_max_cap,
+    poisson_fallback_eps,
+    dispersion,
+    0.0,
+    std::numeric_limits<double>::infinity()
+  );
+  family.prepare_response(y);
+
+  const arma::vec family_parameters = {dispersion};
+  double negative_loglik = 0.0;
+  family.negloglik(y, mu, family_parameters, negative_loglik);
+  return -negative_loglik;
+}
+
 namespace
 {
 
