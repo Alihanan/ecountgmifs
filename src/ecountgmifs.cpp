@@ -648,3 +648,106 @@ Rcpp::List ecountgmifs_cpp(
 
   return output;
 }
+
+// Fixed dispersion really removes the family parameter from optimization.
+// Both objective and mean gradient delegate to the existing NB2 family.
+namespace {
+struct FixedNB2Family final : public IEcountgmifsFamily
+{
+  ecountgmifs_examples::NB2Family delegate;
+  arma::vec fixed_parameters;
+
+  explicit FixedNB2Family(double dispersion) :
+    delegate(1e-12, 1e12, 1e-8, dispersion, 0.0,
+             std::numeric_limits<double>::infinity()),
+    fixed_parameters({dispersion}) {}
+
+  std::string name() const override { return "NB2 fixed dispersion"; }
+  arma::uword parameter_count() const noexcept override { return 0; }
+  void prepare(const EcountgmifsInput& input,
+               const EcountgmifsControl& control) const override
+  { delegate.prepare(input, control); }
+  void negloglik(const arma::vec& y, const arma::vec& mu,
+                const arma::vec&, double& value) const override
+  { delegate.negloglik(y, mu, fixed_parameters, value); }
+  void grad(const arma::vec& y, const arma::vec& mu, const arma::vec&,
+            arma::vec& mean_gradient, arma::vec& family_gradient) const override
+  {
+    arma::vec unused_gradient;
+    delegate.grad(y, mu, fixed_parameters, mean_gradient, unused_gradient);
+    family_gradient.set_size(0);
+  }
+};
+}
+
+// Positive scaling leaves the optimum unchanged and prevents the first
+// gradient step from growing with n. The package's ordinary fitting path is
+// unaffected. Reported likelihoods below are converted back to the total.
+namespace {
+struct MeanObjectiveFamily final : public IEcountgmifsFamily
+{
+  std::unique_ptr<IEcountgmifsFamily> delegate;
+  double scale;
+  MeanObjectiveFamily(IEcountgmifsFamily* family, double sample_size) :
+    delegate(family), scale(1.0 / sample_size) {}
+  std::string name() const override { return delegate->name(); }
+  arma::uword parameter_count() const noexcept override { return delegate->parameter_count(); }
+  arma::vec initial_parameters() const override { return delegate->initial_parameters(); }
+  arma::vec parameter_lower_bounds() const override { return delegate->parameter_lower_bounds(); }
+  arma::vec parameter_upper_bounds() const override { return delegate->parameter_upper_bounds(); }
+  void prepare(const EcountgmifsInput& input, const EcountgmifsControl& control) const override
+  { delegate->prepare(input, control); }
+  void negloglik(const arma::vec& y, const arma::vec& mu,
+                const arma::vec& parameters, double& value) const override
+  { delegate->negloglik(y, mu, parameters, value); value *= scale; }
+  void grad(const arma::vec& y, const arma::vec& mu, const arma::vec& parameters,
+            arma::vec& mean_gradient, arma::vec& family_gradient) const override
+  {
+    delegate->grad(y, mu, parameters, mean_gradient, family_gradient);
+    mean_gradient *= scale;
+    family_gradient *= scale;
+  }
+};
+}
+
+// Internal bridge; the R interface validates data and controls first.
+// [[Rcpp::export]]
+Rcpp::List nb2_glm_fit_cpp(
+    const arma::mat& design, const arma::vec& y, const arma::vec& offset,
+    const arma::vec& initial, bool fixed_dispersion, double dispersion,
+    double dispersion_initial, double dispersion_lower, double dispersion_upper,
+    int outer_maxit, int inner_maxeval, double tolerance,
+    int coefficient_algorithm, int dispersion_algorithm)
+{
+  if (coefficient_algorithm < 0 || coefficient_algorithm >= NLOPT_NUM_ALGORITHMS ||
+      dispersion_algorithm < 0 || dispersion_algorithm >= NLOPT_NUM_ALGORITHMS)
+    Rcpp::stop("Invalid NLopt algorithm number");
+
+  IEcountgmifsFamily* unscaled_family =
+    fixed_dispersion ? static_cast<IEcountgmifsFamily*>(new FixedNB2Family(dispersion)) :
+      static_cast<IEcountgmifsFamily*>(new ecountgmifs_examples::NB2Family(
+        1e-12, 1e12, 1e-8, dispersion_initial, dispersion_lower, dispersion_upper));
+  Rcpp::XPtr<IEcountgmifsFamily> family(new MeanObjectiveFamily(unscaled_family, y.n_elem), true);
+  Rcpp::XPtr<IEcountgmifsLinkFunc> link(new ecountgmifs_examples::LogLink(), true);
+  const EcountgmifsNloptControl coefficient_control {
+    static_cast<nlopt_algorithm>(coefficient_algorithm), tolerance, tolerance, inner_maxeval};
+  const EcountgmifsNloptControl family_control {
+    static_cast<nlopt_algorithm>(dispersion_algorithm), tolerance, tolerance, inner_maxeval};
+
+  // The existing context requires a penalized design. This zero column is
+  // inert: all actual predictors are in w, and no stagewise iteration runs.
+  arma::mat unused_penalized_design(y.n_elem, 1, arma::fill::zeros);
+  arma::vec weights(1, arma::fill::ones);
+  arma::vec lower(initial.n_elem); lower.fill(-arma::datum::inf);
+  arma::vec upper(initial.n_elem); upper.fill(arma::datum::inf);
+  EcountgmifsContextInternal context(
+    unused_penalized_design, y, design, offset, weights,
+    1.0, 1e-6, 0.01, 1e-16, outer_maxit, 1, tolerance, tolerance, 1e-16,
+    family, link, R_NilValue, 0.25, 1e-10, 1e-6, 99,
+    false, 0, 1, false, initial, lower, upper,
+    coefficient_control, family_control, coefficient_control, R_NilValue);
+  Rcpp::List result = context.stagewise.fit_nonpenalized_only();
+  result["loglik"] = Rcpp::as<double>(result["loglik"]) * y.n_elem;
+  result["optimization_objective"] = "mean negative log-likelihood";
+  return result;
+}

@@ -147,6 +147,10 @@ struct NloptOptimizerInternal
         &objective_value
       );
 
+    last_result_ = static_cast<int>(result);
+    ++optimization_calls_;
+    if (result == NLOPT_MAXEVAL_REACHED) ++evaluation_limit_count_;
+
     if (result < 0) {
       Rcpp::stop(
         "NLopt optimization failed with code %d",
@@ -176,7 +180,14 @@ struct NloptOptimizerInternal
   }
 
 
+  int last_result() const noexcept { return last_result_; }
+  unsigned optimization_calls() const noexcept { return optimization_calls_; }
+  unsigned evaluation_limit_count() const noexcept { return evaluation_limit_count_; }
+
 private:
+  int last_result_ = 0; // zero: this optimizer has not run (or has no parameters).
+  unsigned optimization_calls_ = 0;
+  unsigned evaluation_limit_count_ = 0;
   arma::vec parameters_;
   nlopt_opt opt = nullptr;
 

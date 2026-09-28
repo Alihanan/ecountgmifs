@@ -9,6 +9,8 @@
 #' @param moments Optional function of `mu` and `dispersion`, returning the
 #'   population moments of `pmax(0, count + noise)`. See Details.
 #' @param parameters Named list of fixed noise parameters, for reporting.
+#' @param width Positive uniform interval width: U(0, width) or
+#'   U(-width/2, width/2). Default 1 preserves the original experiment.
 #' @param sd Positive Gaussian standard deviation. The default matches the
 #'   variance of either uniform noise, before clamping.
 #' @param x A noise generator.
@@ -16,7 +18,7 @@
 #'
 #' @details
 #' `noise.none()` is the no-noise control; `noise.uniform.positive()` draws
-#' U(0, 1); `noise.uniform.centered()` draws U(-0.5, 0.5); and
+#' U(0, width); `noise.uniform.centered(width)` draws U(-width/2, width/2); and
 #' `noise.gaussian(sd)` draws N(0, sd^2). Negative noisy responses are always
 #' clamped by [generate.nb2()], not by the noise callback.
 #'
@@ -88,44 +90,44 @@ noise.none <- function() {
 
 #' @rdname noise.generator
 #' @export
-noise.uniform.positive <- function() {
+noise.uniform.positive <- function(width = 1) {
+  .nb2.check.scalar(width, "width", lower = 0, strictly.greater = TRUE)
+  force(width)
   noise.generator(
-    name = "uniform_positive",
-    draw = function(n) stats::runif(n, min = 0, max = 1),
-    parameters = list(min = 0, max = 1),
+    name = if (width == 1) "uniform_positive" else paste0("uniform_positive_width_", width),
+    draw = function(n) stats::runif(n, min = 0, max = width),
+    parameters = list(min = 0, max = width),
     moments = function(mu, dispersion) {
-      list(
-        mean = mu + 1 / 2,
-        variance = mu + dispersion * mu^2 + 1 / 12,
-        zero.probability = 0
-      )
+      list(mean = mu + width / 2,
+           variance = mu + dispersion * mu^2 + width^2 / 12,
+           zero.probability = 0)
     }
   )
 }
 
 #' @rdname noise.generator
 #' @export
-noise.uniform.centered <- function() {
+noise.uniform.centered <- function(width = 1) {
+  .nb2.check.scalar(width, "width", lower = 0, strictly.greater = TRUE)
+  force(width)
   noise.generator(
-    name = "uniform_centered",
-    draw = function(n) stats::runif(n, min = -0.5, max = 0.5),
-    parameters = list(min = -0.5, max = 0.5),
+    name = if (width == 1) "uniform_centered" else paste0("uniform_centered_width_", width),
+    draw = function(n) stats::runif(n, -width / 2, width / 2),
+    parameters = list(min = -width / 2, max = width / 2),
     moments = function(mu, dispersion) {
-      probability.zero <- .nb2.zero.probability(mu, dispersion)
-      latent.variance <- mu + dispersion * mu^2
-
-      # Only latent zeros can cross the lower boundary. At a latent zero,
-      # the clamped noise has first moment 1/8 and second moment 1/24.
-      observed.mean <- mu + probability.zero / 8
-      observed.variance <- latent.variance + 1 / 12 -
-        probability.zero / 24 - mu * probability.zero / 4 -
-        probability.zero^2 / 64
-
-      list(
-        mean = observed.mean,
-        variance = observed.variance,
-        zero.probability = probability.zero / 2
-      )
+      # Only integer counts below width/2 can become negative. Start with
+      # exact unclamped moments, then subtract the negative-part integrals.
+      half.width <- width / 2
+      counts <- seq.int(0, ceiling(half.width) - 1)
+      probabilities <- if (dispersion == 0) stats::dpois(counts, mu) else
+        stats::dnbinom(counts, mu = mu, size = 1 / dispersion)
+      distance <- half.width - counts
+      observed.mean <- mu + sum(probabilities * distance^2 / (2 * width))
+      second.moment <- mu + (1 + dispersion) * mu^2 + width^2 / 12 -
+        sum(probabilities * distance^3 / (3 * width))
+      list(mean = observed.mean,
+           variance = max(0, second.moment - observed.mean^2),
+           zero.probability = sum(probabilities * distance / width))
     }
   )
 }
@@ -216,7 +218,8 @@ nb2.noise.moments <- function(mu, dispersion, noise = noise.none()) {
 #' Each noise draw is added to its count. Every negative result is set to
 #' zero before `floor()` and `round()` are applied. R's ties-to-even rounding
 #' is used; ties have probability zero under these continuous noise laws.
-#' Uniform-positive flooring and centered-uniform rounding recover the latent
+#' At the default width 1, uniform-positive flooring and centered-uniform
+#' rounding recover the latent
 #' counts almost surely. Gaussian rounding does not generally recover them.
 #' The function uses the caller's RNG; call `set.seed()` for reproducibility.
 #'

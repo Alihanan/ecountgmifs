@@ -3434,6 +3434,38 @@ public:
     );
   }
 
+  // Expose exactly the initial unpenalized fit, without saturated or stagewise
+  // fitting. This does not change the existing fit() path or stopping rule.
+  Rcpp::List fit_nonpenalized_only()
+  {
+    const auto start = std::chrono::steady_clock::now();
+    begin_fit();
+    std::string optimization_error;
+    try {
+      fit_null_model();
+    } catch (const std::exception& error) {
+      // The experiment archives the available iterate and failure detail.
+      // It is NOT relabelled as a converged fit. Ordinary fit() still throws.
+      optimization_error = error.what();
+      api.termination_detail = "Unpenalized optimization failed: " + optimization_error;
+    }
+    return Rcpp::List::create(
+      Rcpp::Named("optimization_error") = optimization_error,
+      Rcpp::Named("coefficients") = state.theta(),
+      Rcpp::Named("family_parameters") = state.family_parameters(),
+      Rcpp::Named("loglik") = -state.negloglik(),
+      Rcpp::Named("outer_converged") =
+        (api.termination_detail == "Null model fitted; ready for saturated fitting."),
+      Rcpp::Named("termination_detail") = api.termination_detail,
+      Rcpp::Named("outer_iterations") = null_nonpen_optimizer.optimization_calls(),
+      Rcpp::Named("nonpen_last_nlopt_code") = null_nonpen_optimizer.last_result(),
+      Rcpp::Named("family_last_nlopt_code") = null_family_optimizer.last_result(),
+      Rcpp::Named("nonpen_evaluation_limits") = null_nonpen_optimizer.evaluation_limit_count(),
+      Rcpp::Named("family_evaluation_limits") = null_family_optimizer.evaluation_limit_count(),
+      Rcpp::Named("elapsed_seconds") = elapsed_seconds(start)
+    );
+  }
+
   void fit()
   {
     using Clock =

@@ -9,6 +9,10 @@ ecountgmifs_cpp <- function(X, y, w, offset, weight_vec, enet_alpha, epsilon_sta
     .Call(`_ecountgmifs_ecountgmifs_cpp`, X, y, w, offset, weight_vec, enet_alpha, epsilon_start, epsilon_max, epsilon_min, null_iteration_max, stagewise_iteration_max, null_family_parameter_abs_tol, stagewise_objective_rel_tol, stagewise_beta_step_norm_tol, family, link_func, criteria, loglik_reltol_cutoff, enet_abs_tol, enet_rel_tol, enet_max_iter, verbose, include_data, state_track_strategy, state_track_freq, theta_initial, theta_lower_bounds, theta_upper_bounds, null_nonpen_nlopt_algorithm, null_nonpen_nlopt_xtol_rel, null_nonpen_nlopt_ftol_rel, null_nonpen_nlopt_maxeval, null_family_nlopt_algorithm, null_family_nlopt_xtol_rel, null_family_nlopt_ftol_rel, null_family_nlopt_maxeval, null_link_nlopt_algorithm, null_link_nlopt_xtol_rel, null_link_nlopt_ftol_rel, null_link_nlopt_maxeval, saturated_family_nlopt_algorithm, saturated_family_nlopt_xtol_rel, saturated_family_nlopt_ftol_rel, saturated_family_nlopt_maxeval, stagewise_nonpen_nlopt_algorithm, stagewise_nonpen_nlopt_xtol_rel, stagewise_nonpen_nlopt_ftol_rel, stagewise_nonpen_nlopt_maxeval, stagewise_family_nlopt_algorithm, stagewise_family_nlopt_xtol_rel, stagewise_family_nlopt_ftol_rel, stagewise_family_nlopt_maxeval, stagewise_link_nlopt_algorithm, stagewise_link_nlopt_xtol_rel, stagewise_link_nlopt_ftol_rel, stagewise_link_nlopt_maxeval, family_link)
 }
 
+nb2_glm_fit_cpp <- function(design, y, offset, initial, fixed_dispersion, dispersion, dispersion_initial, dispersion_lower, dispersion_upper, outer_maxit, inner_maxeval, tolerance, coefficient_algorithm, dispersion_algorithm) {
+    .Call(`_ecountgmifs_nb2_glm_fit_cpp`, design, y, offset, initial, fixed_dispersion, dispersion, dispersion_initial, dispersion_lower, dispersion_upper, outer_maxit, inner_maxeval, tolerance, coefficient_algorithm, dispersion_algorithm)
+}
+
 example_create_log_link <- function() {
     .Call(`_ecountgmifs_example_create_log_link`)
 }

@@ -94,6 +94,30 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// nb2_glm_fit_cpp
+Rcpp::List nb2_glm_fit_cpp(const arma::mat& design, const arma::vec& y, const arma::vec& offset, const arma::vec& initial, bool fixed_dispersion, double dispersion, double dispersion_initial, double dispersion_lower, double dispersion_upper, int outer_maxit, int inner_maxeval, double tolerance, int coefficient_algorithm, int dispersion_algorithm);
+RcppExport SEXP _ecountgmifs_nb2_glm_fit_cpp(SEXP designSEXP, SEXP ySEXP, SEXP offsetSEXP, SEXP initialSEXP, SEXP fixed_dispersionSEXP, SEXP dispersionSEXP, SEXP dispersion_initialSEXP, SEXP dispersion_lowerSEXP, SEXP dispersion_upperSEXP, SEXP outer_maxitSEXP, SEXP inner_maxevalSEXP, SEXP toleranceSEXP, SEXP coefficient_algorithmSEXP, SEXP dispersion_algorithmSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< const arma::mat& >::type design(designSEXP);
+    Rcpp::traits::input_parameter< const arma::vec& >::type y(ySEXP);
+    Rcpp::traits::input_parameter< const arma::vec& >::type offset(offsetSEXP);
+    Rcpp::traits::input_parameter< const arma::vec& >::type initial(initialSEXP);
+    Rcpp::traits::input_parameter< bool >::type fixed_dispersion(fixed_dispersionSEXP);
+    Rcpp::traits::input_parameter< double >::type dispersion(dispersionSEXP);
+    Rcpp::traits::input_parameter< double >::type dispersion_initial(dispersion_initialSEXP);
+    Rcpp::traits::input_parameter< double >::type dispersion_lower(dispersion_lowerSEXP);
+    Rcpp::traits::input_parameter< double >::type dispersion_upper(dispersion_upperSEXP);
+    Rcpp::traits::input_parameter< int >::type outer_maxit(outer_maxitSEXP);
+    Rcpp::traits::input_parameter< int >::type inner_maxeval(inner_maxevalSEXP);
+    Rcpp::traits::input_parameter< double >::type tolerance(toleranceSEXP);
+    Rcpp::traits::input_parameter< int >::type coefficient_algorithm(coefficient_algorithmSEXP);
+    Rcpp::traits::input_parameter< int >::type dispersion_algorithm(dispersion_algorithmSEXP);
+    rcpp_result_gen = Rcpp::wrap(nb2_glm_fit_cpp(design, y, offset, initial, fixed_dispersion, dispersion, dispersion_initial, dispersion_lower, dispersion_upper, outer_maxit, inner_maxeval, tolerance, coefficient_algorithm, dispersion_algorithm));
+    return rcpp_result_gen;
+END_RCPP
+}
 // example_create_log_link
 SEXP example_create_log_link();
 RcppExport SEXP _ecountgmifs_example_create_log_link() {
@@ -313,6 +337,7 @@ END_RCPP
 static const R_CallMethodDef CallEntries[] = {
     {"_ecountgmifs_nb2_loglik_cpp", (DL_FUNC) &_ecountgmifs_nb2_loglik_cpp, 6},
     {"_ecountgmifs_ecountgmifs_cpp", (DL_FUNC) &_ecountgmifs_ecountgmifs_cpp, 57},
+    {"_ecountgmifs_nb2_glm_fit_cpp", (DL_FUNC) &_ecountgmifs_nb2_glm_fit_cpp, 14},
     {"_ecountgmifs_example_create_log_link", (DL_FUNC) &_ecountgmifs_example_create_log_link, 0},
     {"_ecountgmifs_example_create_softplus_link", (DL_FUNC) &_ecountgmifs_example_create_softplus_link, 0},
     {"_ecountgmifs_example_create_poisson_family", (DL_FUNC) &_ecountgmifs_example_create_poisson_family, 2},
